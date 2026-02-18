@@ -9,8 +9,4 @@
   <ItemGroup>
     <ProjectReference Include="..\CheckMechanic.Shared\CheckMechanic.Shared.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
-    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
-  </ItemGroup>
 </Project>

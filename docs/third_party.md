@@ -13,10 +13,6 @@
   - Usage: S3/CloudFront release feed based self-update workflow
   - License: MIT
   - URL: https://github.com/velopack/velopack
-- FlaUI (Core/UIA3)
-  - Usage: experimental UI automation for Core Temp shared memory setup
-  - License: MIT
-  - URL: https://github.com/FlaUI/FlaUI
 
 ## Other major OSS dependencies
 - .NET 8 runtime / SDK components (Microsoft)

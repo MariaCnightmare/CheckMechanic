@@ -9,10 +9,6 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
 using CheckMechanic.Shared;
-using FlaUI.Core;
-using FlaUI.Core.Definitions;
-using FlaUI.Core.Input;
-using FlaUI.UIA3;
 using Microsoft.Win32;
 
 namespace CheckMechanic.Desktop;
@@ -34,7 +30,6 @@ public partial class MainWindow : Window
     public string SetupInstructionsText { get; set; } = "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
     public string MainFeatureText { get; set; } = "制限モード: 主要機能は利用できません。診断情報を確認してください。";
     public string DiagnosticSensorsText { get; set; } = "(未取得)";
-    public bool ExperimentalAutoEnableConsent { get; set; } = false;
     public bool CloseCoreTempOnExitConsent { get; set; } = false;
     public ObservableCollection<string> Logs { get; } = new();
 
@@ -318,59 +313,6 @@ public partial class MainWindow : Window
         await Task.Delay(1200);
         await EnsureHelperAvailableAsync();
         await PollTelemetryAsync();
-    }
-
-    private async void AutoEnableCoreTempSharedMemoryButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (!ExperimentalAutoEnableConsent)
-        {
-            SetStatus("⚠ 実験機能の同意が必要です");
-            AddLog("experimental auto-enable rejected: consent required");
-            return;
-        }
-
-        var proc = LaunchOrActivateCoreTemp();
-        if (proc is null)
-        {
-            SetStatus("❌ Core Temp を起動できませんでした");
-            AddLog("experimental auto-enable failed: core temp not found");
-            return;
-        }
-
-        try
-        {
-            await Task.Delay(800);
-            var automationResult = await Task.Run(() => TryEnableCoreTempSharedMemoryByFlaUi(proc.Id));
-            foreach (var line in automationResult.Diagnostics)
-            {
-                AddLog($"[auto-coretemp] {line}");
-            }
-            AddLog($"experimental auto-enable flow completed: success={automationResult.Success}");
-            await Task.Delay(300);
-            await RecheckAfterAutomationAsync();
-            var validation = await ValidateCoreTempAutomationSuccessAsync();
-            if (validation.Success)
-            {
-                SetStatus("✅ Core Temp 共有メモリ設定を確認しました");
-            }
-            else
-            {
-                SetStatus("❌ 自動設定後も要件未達");
-                if (!automationResult.Success)
-                {
-                    AddLog("[auto-coretemp] FlaUI automation did not complete all steps");
-                }
-                AddLog($"[auto-coretemp] validation failed: {validation.Reason}");
-                SetupInstructionsText = "Core Temp: Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして、再チェックしてください。";
-            }
-        }
-        catch (Exception ex)
-        {
-            AddLog($"experimental auto-enable failed: {ex.GetType().Name}: {ex.Message}");
-            SetStatus("❌ 自動設定に失敗。手動手順を実施してください。");
-            SetupInstructionsText = "Core Temp: Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして、再チェックしてください。";
-            RefreshBindings();
-        }
     }
 
     private async void RefreshDiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
@@ -665,205 +607,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private static CoreTempAutomationResult TryEnableCoreTempSharedMemoryByFlaUi(int processId)
-    {
-        var diagnostics = new List<string>();
-        void LogDiag(string text) => diagnostics.Add(text);
-        try
-        {
-            using var automation = new UIA3Automation();
-            using var app = FlaUI.Core.Application.Attach(processId);
-            var mainWindow = app.GetMainWindow(automation, TimeSpan.FromSeconds(8));
-            if (mainWindow is null)
-            {
-                LogDiag("main_window found=false");
-                return new CoreTempAutomationResult(false, diagnostics);
-            }
-
-            LogDiag($"main_window title='{mainWindow.Title}' class='{mainWindow.ClassName}' pid={processId}");
-            mainWindow.Focus();
-            Keyboard.TypeSimultaneously(FlaUI.Core.WindowsAPI.VirtualKeyShort.ALT, FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_O);
-            Thread.Sleep(200);
-            Keyboard.Type(FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_S);
-            Thread.Sleep(600);
-
-            var settingsWindow = app.GetAllTopLevelWindows(automation)
-                .FirstOrDefault(w => w.Title.Contains("Settings", StringComparison.OrdinalIgnoreCase))
-                ?? mainWindow;
-            LogDiag($"settings_window title='{settingsWindow.Title}' class='{settingsWindow.ClassName}' pid={settingsWindow.Properties.ProcessId.ValueOrDefault}");
-
-            var tabItems = settingsWindow.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem))
-                .Select(t => t.Name)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Distinct()
-                .ToList();
-            LogDiag($"tab_items=[{string.Join(", ", tabItems)}]");
-
-            var advanced = settingsWindow.FindFirstDescendant(cf =>
-                cf.ByControlType(ControlType.TabItem).And(cf.ByName("Advanced")));
-            var advancedSelected = false;
-            if (advanced is not null)
-            {
-                var sel = advanced.Patterns.SelectionItem.PatternOrDefault;
-                if (sel is not null)
-                {
-                    sel.Select();
-                    advancedSelected = true;
-                    LogDiag("advanced_tab selection_item.select used");
-                }
-                else
-                {
-                    advanced.Focus();
-                    advanced.Click();
-                    advancedSelected = true;
-                    LogDiag("advanced_tab click used");
-                }
-            }
-            else
-            {
-                LogDiag("advanced_tab not found, fallback keyboard navigation");
-                FallbackEnableSharedMemoryByKeyboard(LogDiag);
-            }
-            Thread.Sleep(300);
-
-            var checkboxNames = settingsWindow.FindAllDescendants(cf => cf.ByControlType(ControlType.CheckBox))
-                .Select(c => c.Name)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Take(20)
-                .ToList();
-            LogDiag($"checkbox_names_top20=[{string.Join(", ", checkboxNames)}]");
-
-            var checkbox = settingsWindow.FindFirstDescendant(cf =>
-                cf.ByControlType(ControlType.CheckBox).And(cf.ByName("Enable Global Shared Memory (SNMP)")));
-            if (checkbox is null)
-            {
-                checkbox = settingsWindow.FindFirstDescendant(cf =>
-                    cf.ByControlType(ControlType.CheckBox).And(cf.ByName("Enable Global Shared Memory")));
-            }
-            if (checkbox is null)
-            {
-                checkbox = settingsWindow.FindFirstDescendant(cf =>
-                    cf.ByControlType(ControlType.CheckBox).And(cf.ByName("SNMP")));
-            }
-
-            if (checkbox is null)
-            {
-                LogDiag("snmp_checkbox found=false");
-                if (!advancedSelected)
-                {
-                    FallbackEnableSharedMemoryByKeyboard(LogDiag);
-                }
-                return new CoreTempAutomationResult(false, diagnostics);
-            }
-            LogDiag($"snmp_checkbox found=true name='{checkbox.Name}'");
-
-            var toggleState = checkbox.Patterns.Toggle.PatternOrDefault?.ToggleState;
-            LogDiag($"snmp_checkbox toggle_state_before={toggleState?.ToString() ?? "n/a"}");
-            var togglePattern = checkbox.Patterns.Toggle.PatternOrDefault;
-            if (togglePattern is not null)
-            {
-                if (togglePattern.ToggleState != ToggleState.On)
-                {
-                    togglePattern.Toggle();
-                    LogDiag("snmp_checkbox toggle_pattern.toggle used");
-                }
-                else
-                {
-                    LogDiag("snmp_checkbox already on");
-                }
-            }
-            else if (toggleState != ToggleState.On)
-            {
-                checkbox.Click();
-                LogDiag("snmp_checkbox click fallback used");
-            }
-            Thread.Sleep(150);
-            var toggleStateAfter = checkbox.Patterns.Toggle.PatternOrDefault?.ToggleState;
-            LogDiag($"snmp_checkbox toggle_state_after={toggleStateAfter?.ToString() ?? "n/a"}");
-
-            var applyOrOk = settingsWindow.FindFirstDescendant(cf =>
-                cf.ByControlType(ControlType.Button).And(cf.ByName("Apply")))
-                ?? settingsWindow.FindFirstDescendant(cf =>
-                    cf.ByControlType(ControlType.Button).And(cf.ByName("OK")));
-            if (applyOrOk is null)
-            {
-                LogDiag("apply_or_ok found=false");
-                return new CoreTempAutomationResult(false, diagnostics);
-            }
-
-            var invokePattern = applyOrOk.Patterns.Invoke.PatternOrDefault;
-            if (invokePattern is not null)
-            {
-                invokePattern.Invoke();
-                LogDiag("apply_or_ok invoke_pattern used");
-            }
-            else
-            {
-                applyOrOk.Click();
-                LogDiag("apply_or_ok click fallback used");
-            }
-
-            return new CoreTempAutomationResult(true, diagnostics);
-        }
-        catch (Exception ex)
-        {
-            LogDiag($"exception={ex.GetType().Name}: {ex.Message}");
-            return new CoreTempAutomationResult(false, diagnostics);
-        }
-    }
-
-    private static void FallbackEnableSharedMemoryByKeyboard(Action<string> log)
-    {
-        log("keyboard_fallback: Ctrl+Tab x4, Tab x10, Space, Enter");
-        for (var i = 0; i < 4; i++)
-        {
-            Keyboard.TypeSimultaneously(FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.TAB);
-            Thread.Sleep(70);
-        }
-        for (var i = 0; i < 10; i++)
-        {
-            Keyboard.Type(FlaUI.Core.WindowsAPI.VirtualKeyShort.TAB);
-            Thread.Sleep(40);
-        }
-        Keyboard.Type(FlaUI.Core.WindowsAPI.VirtualKeyShort.SPACE);
-        Thread.Sleep(80);
-        Keyboard.Type(FlaUI.Core.WindowsAPI.VirtualKeyShort.ENTER);
-    }
-
-    private async Task<(bool Success, string Reason)> ValidateCoreTempAutomationSuccessAsync()
-    {
-        try
-        {
-            using var response = await _httpClient.GetAsync($"{HelperBaseUrl}/v1/telemetry");
-            if (!response.IsSuccessStatusCode)
-            {
-                return (false, $"telemetry HTTP {(int)response.StatusCode}");
-            }
-            var json = await response.Content.ReadAsStringAsync();
-            var payload = JsonSerializer.Deserialize<TelemetryResponse>(json, JsonOptions);
-            if (payload is null)
-            {
-                return (false, "telemetry parse failed");
-            }
-
-            var providerErrors = payload.Cpu.ProviderErrors ?? new List<string>();
-            var hasShmNotFound = providerErrors.Any(x =>
-                x.Equals("coretemp:TEMP_CORETEMP_SHM_NOT_FOUND", StringComparison.OrdinalIgnoreCase));
-            var providerOk = string.Equals(payload.Cpu.ProviderUsed, "coretemp", StringComparison.OrdinalIgnoreCase);
-            var tempOk = payload.Cpu.TempC is double;
-
-            if (!hasShmNotFound && providerOk && tempOk)
-            {
-                return (true, "coretemp ready");
-            }
-
-            return (false, $"provider={payload.Cpu.ProviderUsed ?? "null"} temp={(payload.Cpu.TempC?.ToString("F1") ?? "null")} shm_not_found={hasShmNotFound}");
-        }
-        catch (Exception ex)
-        {
-            return (false, $"{ex.GetType().Name}: {ex.Message}");
-        }
-    }
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -894,5 +637,4 @@ public partial class MainWindow : Window
         }
     }
 
-    private sealed record CoreTempAutomationResult(bool Success, List<string> Diagnostics);
 }
