@@ -31,3 +31,6 @@ Thumbs.db
 *.tmp
 *.swp
 
+# .NET
+bin/
+obj/

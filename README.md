@@ -37,3 +37,20 @@ streamlit run app.py
 - `~/.checkmechanic/consent_token` は再利用され、同じ `token_hash_sha256` になる
 4. LHM 未起動/未接続確認:
 - 画面は停止せず、理由が `warning/error` で表示される
+
+## Windows Desktop App (WPF + SensorHelper)
+`src/` 以下に .NET 8 の新規実装を追加しています。
+
+- `src/CheckMechanic.SensorHelper`:
+  - LibreHardwareMonitorLib を使って CPU 温度を取得
+  - `127.0.0.1:17805` で `/health`, `/v1/telemetry` を提供
+- `src/CheckMechanic.Desktop`:
+  - SensorHelper のヘルスチェックと自動起動
+  - 温度表示・ステータス表示・再接続/再起動ボタン・簡易ログ
+
+### Build / Run（Windows, .NET 8）
+```bash
+dotnet build CheckMechanic.sln
+dotnet run --project src/CheckMechanic.SensorHelper/CheckMechanic.SensorHelper.csproj
+dotnet run --project src/CheckMechanic.Desktop/CheckMechanic.Desktop.csproj
+```
