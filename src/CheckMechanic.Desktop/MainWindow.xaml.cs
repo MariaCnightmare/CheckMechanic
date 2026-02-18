@@ -671,7 +671,15 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("Apply/OK button not found.");
         }
 
-        applyOrOk.Invoke();
+        var invokePattern = applyOrOk.Patterns.Invoke.PatternOrDefault;
+        if (invokePattern is not null)
+        {
+            invokePattern.Invoke();
+        }
+        else
+        {
+            applyOrOk.Click();
+        }
     }
 
     [DllImport("user32.dll")]
