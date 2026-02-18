@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using CheckMechanic.Shared;
 using Microsoft.Win32;
@@ -36,6 +37,9 @@ public partial class MainWindow : Window
     public string NetText { get; set; } = "未取得";
     public string PerfScoreText { get; set; } = "-- (N/A)";
     public string StatusText { get; set; } = "⚠ 起動中";
+    public string StatusBadgeText { get; set; } = "STARTING";
+    public Brush StatusBadgeBackground { get; set; } = new SolidColorBrush(Color.FromRgb(24, 40, 56));
+    public Brush StatusBadgeBorder { get; set; } = new SolidColorBrush(Color.FromRgb(39, 70, 91));
     public string RestrictionText { get; set; } = "必須要件未達: 温度取得が必要です。";
     public string SetupInstructionsText { get; set; } = "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
     public string MainFeatureText { get; set; } = "制限モード: 主要機能は利用できません。診断情報を確認してください。";
@@ -45,6 +49,24 @@ public partial class MainWindow : Window
     public string TempChartData { get; set; } = string.Empty;
     public string CpuChartData { get; set; } = string.Empty;
     public string MemChartData { get; set; } = string.Empty;
+    public string TempRingArcData { get; set; } = string.Empty;
+    public string TempRingCenterText { get; set; } = "--";
+    public string TempLatestText { get; set; } = "--";
+    public string CpuLatestText { get; set; } = "--";
+    public string MemLatestText { get; set; } = "--";
+    public double CpuUtilizationValue { get; set; }
+    public double MemoryUtilizationValue { get; set; }
+
+    public string ProfileOsMajor { get; set; } = "-";
+    public string ProfileOsBuildBucket { get; set; } = "-";
+    public string ProfileCpuBrand { get; set; } = "-";
+    public string ProfileCoreText { get; set; } = "-";
+    public string ProfileMemoryBucket { get; set; } = "-";
+    public string ProfileGpuName { get; set; } = "-";
+    public string ProfileStorageType { get; set; } = "-";
+    public string ProfileStorageBucket { get; set; } = "-";
+    public string ProfileDeviceClass { get; set; } = "-";
+    public string ProfileTempProvider { get; set; } = "-";
     public bool CloseCoreTempOnExitConsent { get; set; }
     public ObservableCollection<string> Logs { get; } = new();
 
@@ -182,13 +204,20 @@ public partial class MainWindow : Window
             }
 
             CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
+            CpuUtilizationValue = payload.Cpu.UtilPercent is double cpuVal ? Math.Clamp(cpuVal, 0, 100) : 0;
             MemoryText = BuildMemoryText(payload.Memory);
+            MemoryUtilizationValue = payload.Memory.UtilPercent is double memVal ? Math.Clamp(memVal, 0, 100) : 0;
             DiskText = $"R {FormatRate(payload.Disk.ReadBps)} / W {FormatRate(payload.Disk.WriteBps)}";
             NetText = $"↓ {FormatRate(payload.Net.RecvBps)} / ↑ {FormatRate(payload.Net.SentBps)}";
+            CpuLatestText = payload.Cpu.UtilPercent is double cu ? $"{cu:F1}%" : "--";
+            MemLatestText = payload.Memory.UtilPercent is double mu ? $"{mu:F1}%" : "--";
 
             if (payload.Cpu.TempC is double temp)
             {
                 CpuTemperatureText = $"{temp:F1} °C";
+                TempLatestText = $"{temp:F1}°C";
+                TempRingCenterText = $"{temp:F0}";
+                TempRingArcData = BuildRingArcPath(temp, 30, 100, 86, 10);
                 SetStatus("✅ OK");
                 SetRestrictedMode(false, string.Empty, string.Empty);
                 AddLog($"temp={temp:F1}C util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider={payload.Cpu.ProviderUsed ?? "unknown"} label={payload.Cpu.Label}");
@@ -196,6 +225,9 @@ public partial class MainWindow : Window
             else
             {
                 CpuTemperatureText = "未取得";
+                TempLatestText = "Restricted";
+                TempRingCenterText = "R";
+                TempRingArcData = string.Empty;
                 SetStatus("❌ 必須要件未達（温度取得不可）");
                 SetRestrictedMode(
                     true,
@@ -213,6 +245,9 @@ public partial class MainWindow : Window
         catch (HttpRequestException ex)
         {
             CpuTemperatureText = "未取得";
+            TempLatestText = "--";
+            TempRingCenterText = "R";
+            TempRingArcData = string.Empty;
             SetStatus("❌ SensorHelper 未接続");
             SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
             AddLog(SanitizeError(ex.Message));
@@ -221,6 +256,9 @@ public partial class MainWindow : Window
         catch
         {
             CpuTemperatureText = "未取得";
+            TempLatestText = "--";
+            TempRingCenterText = "R";
+            TempRingArcData = string.Empty;
             SetStatus("❌ 取得失敗");
             SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
             AddLog("telemetry request failed");
@@ -243,11 +281,34 @@ public partial class MainWindow : Window
             var raw = await response.Content.ReadAsStringAsync();
             _lastProfileJson = raw;
             ProfileText = PrettyJson(raw);
+            var profile = JsonSerializer.Deserialize<SystemProfileDto>(raw, JsonOptions) ?? new SystemProfileDto();
+            ProfileOsMajor = profile.OsMajor ?? "-";
+            ProfileOsBuildBucket = profile.OsBuildBucket ?? "-";
+            ProfileCpuBrand = profile.CpuBrand ?? "-";
+            var logical = profile.LogicalCores?.ToString() ?? "-";
+            var physical = profile.PhysicalCores?.ToString() ?? "-";
+            ProfileCoreText = $"{physical}C / {logical}T";
+            ProfileMemoryBucket = profile.MemoryTotalGbBucket ?? "-";
+            ProfileGpuName = profile.GpuName ?? "-";
+            ProfileStorageType = profile.StoragePrimaryType ?? "-";
+            ProfileStorageBucket = profile.StorageTotalGbBucket ?? "-";
+            ProfileDeviceClass = profile.DeviceClass ?? "-";
+            ProfileTempProvider = profile.TempProvider ?? "-";
             UpdateRankingPreview();
         }
         catch
         {
             ProfileText = "{\"error\":\"profile_unavailable\"}";
+            ProfileOsMajor = "-";
+            ProfileOsBuildBucket = "-";
+            ProfileCpuBrand = "-";
+            ProfileCoreText = "-";
+            ProfileMemoryBucket = "-";
+            ProfileGpuName = "-";
+            ProfileStorageType = "-";
+            ProfileStorageBucket = "-";
+            ProfileDeviceClass = "-";
+            ProfileTempProvider = "-";
             UpdateRankingPreview();
         }
     }
@@ -340,9 +401,9 @@ public partial class MainWindow : Window
 
     private void RefreshChartData()
     {
-        TempChartData = BuildSparklinePath(_tempHistory, 960, 140, 30, 100);
-        CpuChartData = BuildSparklinePath(_cpuHistory, 960, 140, 0, 100);
-        MemChartData = BuildSparklinePath(_memHistory, 960, 140, 0, 100);
+        TempChartData = BuildSparklinePath(_tempHistory, 1020, 150, 30, 100);
+        CpuChartData = BuildSparklinePath(_cpuHistory, 1020, 150, 0, 100);
+        MemChartData = BuildSparklinePath(_memHistory, 1020, 150, 0, 100);
     }
 
     private static string BuildSparklinePath(IEnumerable<double?> values, double width, double height, double minY, double maxY)
@@ -380,6 +441,32 @@ public partial class MainWindow : Window
         }
 
         return sb.ToString();
+    }
+
+    private static string BuildRingArcPath(double value, double min, double max, double size, double stroke)
+    {
+        var progress = max > min ? Math.Clamp((value - min) / (max - min), 0, 1) : 0;
+        if (progress <= 0)
+        {
+            return string.Empty;
+        }
+
+        var radius = (size / 2.0) - (stroke / 2.0);
+        var center = size / 2.0;
+        var startAngle = -90.0;
+        var endAngle = startAngle + (progress * 360.0);
+        var start = PolarToCartesian(center, center, radius, startAngle);
+        var end = PolarToCartesian(center, center, radius, endAngle);
+        var isLargeArc = progress > 0.5 ? 1 : 0;
+        return $"M {start.X:F2},{start.Y:F2} A {radius:F2},{radius:F2} 0 {isLargeArc} 1 {end.X:F2},{end.Y:F2}";
+    }
+
+    private static Point PolarToCartesian(double centerX, double centerY, double radius, double angleDegrees)
+    {
+        var angleRadians = angleDegrees * Math.PI / 180.0;
+        return new Point(
+            centerX + (radius * Math.Cos(angleRadians)),
+            centerY + (radius * Math.Sin(angleRadians)));
     }
 
     private static string BuildMemoryText(MemoryTelemetry memory)
@@ -593,6 +680,24 @@ public partial class MainWindow : Window
     private void SetStatus(string text)
     {
         StatusText = text;
+        if (text.Contains("✅", StringComparison.Ordinal))
+        {
+            StatusBadgeText = "OK";
+            StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(24, 58, 44));
+            StatusBadgeBorder = new SolidColorBrush(Color.FromRgb(61, 132, 101));
+        }
+        else if (text.Contains("❌", StringComparison.Ordinal))
+        {
+            StatusBadgeText = "RESTRICTED";
+            StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(57, 30, 36));
+            StatusBadgeBorder = new SolidColorBrush(Color.FromRgb(147, 78, 91));
+        }
+        else
+        {
+            StatusBadgeText = "STARTING";
+            StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(48, 42, 24));
+            StatusBadgeBorder = new SolidColorBrush(Color.FromRgb(141, 122, 68));
+        }
         RefreshBindings();
     }
 
