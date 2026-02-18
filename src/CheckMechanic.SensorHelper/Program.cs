@@ -175,8 +175,8 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 
     try
     {
-        IHardware? cpuHardware = monitor.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
-        if (cpuHardware is null)
+        var cpuHardwares = monitor.Hardware.Where(h => h.HardwareType == HardwareType.Cpu).ToList();
+        if (cpuHardwares.Count == 0)
         {
             return new CpuTelemetry
             {
@@ -186,16 +186,22 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
             };
         }
 
-        cpuHardware.Update();
-        foreach (var sub in cpuHardware.SubHardware)
+        var sensors = new List<ISensor>();
+        foreach (var cpuHardware in cpuHardwares)
         {
-            sub.Update();
-        }
+            cpuHardware.Update();
+            foreach (var sub in cpuHardware.SubHardware)
+            {
+                sub.Update();
+            }
 
-        var sensors = cpuHardware.Sensors
-            .Concat(cpuHardware.SubHardware.SelectMany(sh => sh.Sensors))
-            .Where(s => s.SensorType == SensorType.Temperature)
-            .ToList();
+            sensors.AddRange(cpuHardware.Sensors.Where(s => s.SensorType == SensorType.Temperature));
+            sensors.AddRange(
+                cpuHardware.SubHardware
+                    .SelectMany(sh => sh.Sensors)
+                    .Where(s => s.SensorType == SensorType.Temperature)
+            );
+        }
 
         if (sensors.Count == 0)
         {
@@ -207,8 +213,13 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
             };
         }
 
-        var package = sensors.FirstOrDefault(s => s.Name.Contains("package", StringComparison.OrdinalIgnoreCase));
-        var picked = package ?? sensors.FirstOrDefault();
+        var valued = sensors.Where(s => s.Value is not null).ToList();
+        var valuedPackage = valued.FirstOrDefault(s => s.Name.Contains("package", StringComparison.OrdinalIgnoreCase));
+        var anyValued = valued.FirstOrDefault();
+
+        var anyPackage = sensors.FirstOrDefault(s => s.Name.Contains("package", StringComparison.OrdinalIgnoreCase));
+        var anySensor = sensors.FirstOrDefault();
+        var picked = valuedPackage ?? anyValued ?? anyPackage ?? anySensor;
 
         return new CpuTelemetry
         {
