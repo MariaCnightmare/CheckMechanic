@@ -60,6 +60,8 @@ streamlit run app.py
 - 一部環境ではセンサー取得に管理者権限が必要です
 - Desktop の「管理者でSensorHelperを再起動して再試行」ボタンで昇格再試行できます
 - 昇格後も `temp_c` が取得できない場合は、非対応扱いとして制限モードを維持します
+- Core Temp の設定は `Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP)` を ON にしてください
+- 実験機能として、同意時のみ UI 自動化で設定ONを試行できます（失敗時は手動手順を案内）
 
 ### 非対応時の案内文言（統一）
 - `必須要件未達: 温度取得が必要です。管理者で再試行してください。`

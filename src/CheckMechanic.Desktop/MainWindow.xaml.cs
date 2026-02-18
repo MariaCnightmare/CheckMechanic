@@ -4,10 +4,15 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
 using CheckMechanic.Shared;
+using FlaUI.Core;
+using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
+using FlaUI.UIA3;
 using Microsoft.Win32;
 
 namespace CheckMechanic.Desktop;
@@ -26,9 +31,10 @@ public partial class MainWindow : Window
     public string CpuUtilizationText { get; set; } = "CPU使用率: 未取得";
     public string StatusText { get; set; } = "⚠ 起動中";
     public string RestrictionText { get; set; } = "必須要件未達: 温度取得が必要です。";
-    public string SetupInstructionsText { get; set; } = "Core Temp をインストールして起動し、「再チェック」を実行してください。";
+    public string SetupInstructionsText { get; set; } = "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
     public string MainFeatureText { get; set; } = "制限モード: 主要機能は利用できません。診断情報を確認してください。";
     public string DiagnosticSensorsText { get; set; } = "(未取得)";
+    public bool ExperimentalAutoEnableConsent { get; set; } = false;
     public ObservableCollection<string> Logs { get; } = new();
 
     public MainWindow()
@@ -268,6 +274,22 @@ public partial class MainWindow : Window
         await EnsureHelperAvailableAsync();
     }
 
+    private async void LaunchOrActivateCoreTempButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var proc = LaunchOrActivateCoreTemp();
+        if (proc is null)
+        {
+            SetStatus("⚠ Core Temp を起動できませんでした");
+            AddLog("core temp launch/activate failed");
+            return;
+        }
+
+        AddLog($"core temp ready: pid={proc.Id}");
+        SetStatus("⚠ Core Temp 起動/前面化済み。再チェックしてください。");
+        await Task.Delay(700);
+        await RefreshDiagnosticsAsync();
+    }
+
     private async void RecheckButton_OnClick(object sender, RoutedEventArgs e)
     {
         await EnsureHelperAvailableAsync();
@@ -294,6 +316,41 @@ public partial class MainWindow : Window
         await Task.Delay(1200);
         await EnsureHelperAvailableAsync();
         await PollTelemetryAsync();
+    }
+
+    private async void AutoEnableCoreTempSharedMemoryButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!ExperimentalAutoEnableConsent)
+        {
+            SetStatus("⚠ 実験機能の同意が必要です");
+            AddLog("experimental auto-enable rejected: consent required");
+            return;
+        }
+
+        var proc = LaunchOrActivateCoreTemp();
+        if (proc is null)
+        {
+            SetStatus("❌ Core Temp を起動できませんでした");
+            AddLog("experimental auto-enable failed: core temp not found");
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(800);
+            await Task.Run(() => TryEnableCoreTempSharedMemoryByFlaUi(proc.Id));
+            AddLog("experimental auto-enable completed");
+            SetStatus("⚠ Core Temp 設定を自動適用しました。再チェックしてください。");
+            await Task.Delay(300);
+            await RecheckAfterAutomationAsync();
+        }
+        catch (Exception ex)
+        {
+            AddLog($"experimental auto-enable failed: {ex.GetType().Name}: {ex.Message}");
+            SetStatus("❌ 自動設定に失敗。手動手順を実施してください。");
+            SetupInstructionsText = "Core Temp: Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして、再チェックしてください。";
+            RefreshBindings();
+        }
     }
 
     private async void RefreshDiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
@@ -442,13 +499,13 @@ public partial class MainWindow : Window
         var list = providerErrors ?? Array.Empty<string>();
         if (list.Any(x => x.Contains("coretemp:TEMP_CORETEMP_SHM_NOT_FOUND", StringComparison.OrdinalIgnoreCase)))
         {
-            return "Core Temp が未検出です。Core Temp をインストールして起動し、Shared Memory を有効化したうえで「再チェック」を実行してください。";
+            return "Core Temp が未検出です。Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
         }
         if (list.Any(x => x.Contains("coretemp:TEMP_CORETEMP_VALUES_UNAVAILABLE", StringComparison.OrdinalIgnoreCase)))
         {
-            return "Core Temp は検出されていますが温度値を取得できません。管理者で再試行し、Core Temp の表示値を確認してください。";
+            return "Core Temp は検出されていますが温度値を取得できません。Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を確認し、管理者で再試行してください。";
         }
-        return "Core Temp を起動した状態で「再チェック」または「管理者でSensorHelperを再起動して再試行」を実行してください。";
+        return "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」または「管理者でSensorHelperを再起動して再試行」を実行してください。";
     }
 
     private static async Task<bool> IsPortOpenAsync()
@@ -474,4 +531,151 @@ public partial class MainWindow : Window
             DataContext = this;
         });
     }
+
+    private async Task RecheckAfterAutomationAsync()
+    {
+        await EnsureHelperAvailableAsync();
+        await PollTelemetryAsync();
+        await RefreshDiagnosticsAsync();
+    }
+
+    private Process? LaunchOrActivateCoreTemp()
+    {
+        var running = FindRunningCoreTempProcess();
+        if (running is not null)
+        {
+            TryBringToFront(running);
+            return running;
+        }
+
+        foreach (var exe in CoreTempExeCandidates())
+        {
+            if (!File.Exists(exe))
+            {
+                continue;
+            }
+
+            try
+            {
+                var p = Process.Start(new ProcessStartInfo
+                {
+                    FileName = exe,
+                    UseShellExecute = true,
+                    WorkingDirectory = Path.GetDirectoryName(exe),
+                });
+                if (p is not null)
+                {
+                    return p;
+                }
+            }
+            catch
+            {
+                // try next candidate
+            }
+        }
+
+        try
+        {
+            return Process.Start(new ProcessStartInfo
+            {
+                FileName = "Core Temp.exe",
+                UseShellExecute = true,
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IEnumerable<string> CoreTempExeCandidates()
+    {
+        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Core Temp", "Core Temp.exe");
+        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Core Temp", "Core Temp.exe");
+    }
+
+    private static Process? FindRunningCoreTempProcess()
+    {
+        foreach (var name in new[] { "Core Temp", "CoreTemp" })
+        {
+            var p = Process.GetProcessesByName(name).FirstOrDefault();
+            if (p is not null)
+            {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    private static void TryBringToFront(Process process)
+    {
+        try
+        {
+            if (process.MainWindowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+            ShowWindow(process.MainWindowHandle, 9);
+            SetForegroundWindow(process.MainWindowHandle);
+        }
+        catch
+        {
+            // best effort
+        }
+    }
+
+    private static void TryEnableCoreTempSharedMemoryByFlaUi(int processId)
+    {
+        using var automation = new UIA3Automation();
+        using var app = FlaUI.Core.Application.Attach(processId);
+        var mainWindow = app.GetMainWindow(automation, TimeSpan.FromSeconds(8));
+        if (mainWindow is null)
+        {
+            throw new InvalidOperationException("Core Temp window not found.");
+        }
+
+        mainWindow.Focus();
+        Keyboard.TypeSimultaneously(FlaUI.Core.WindowsAPI.VirtualKeyShort.ALT, FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_O);
+        Thread.Sleep(200);
+        Keyboard.Type(FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_S);
+        Thread.Sleep(600);
+
+        var settingsWindow = app.GetAllTopLevelWindows(automation)
+            .FirstOrDefault(w => w.Title.Contains("Settings", StringComparison.OrdinalIgnoreCase))
+            ?? mainWindow;
+
+        var advanced = settingsWindow.FindFirstDescendant(cf =>
+            cf.ByControlType(ControlType.TabItem).And(cf.ByName("Advanced")));
+        advanced?.AsTabItem().Select();
+        Thread.Sleep(300);
+
+        var checkbox = settingsWindow.FindFirstDescendant(cf =>
+            cf.ByControlType(ControlType.CheckBox).And(cf.ByName("Enable Global Shared Memory (SNMP)")));
+        if (checkbox is null)
+        {
+            throw new InvalidOperationException("SNMP shared memory checkbox not found.");
+        }
+        var checkBoxControl = checkbox.AsCheckBox();
+        if (checkBoxControl.IsChecked != true)
+        {
+            checkBoxControl.Click();
+        }
+
+        var applyOrOk = settingsWindow.FindFirstDescendant(cf =>
+            cf.ByControlType(ControlType.Button).And(cf.ByName("Apply")))
+            ?? settingsWindow.FindFirstDescendant(cf =>
+                cf.ByControlType(ControlType.Button).And(cf.ByName("OK")));
+        if (applyOrOk is null)
+        {
+            throw new InvalidOperationException("Apply/OK button not found.");
+        }
+
+        applyOrOk.AsButton().Invoke();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }

@@ -21,10 +21,15 @@
             <TextBlock Text="{Binding StatusText}" FontSize="16" />
             <TextBlock Text="{Binding SetupInstructionsText}" Margin="0,8,0,0" TextWrapping="Wrap" />
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <Button Content="Core Tempを起動/前面へ" Width="190" Margin="0,0,8,0" Click="LaunchOrActivateCoreTempButton_OnClick" />
                 <Button Content="再接続" Width="120" Margin="0,0,8,0" Click="ReconnectButton_OnClick" />
                 <Button Content="再チェック" Width="120" Margin="0,0,8,0" Click="RecheckButton_OnClick" />
                 <Button Content="SensorHelperを再起動" Width="180" Click="RestartHelperButton_OnClick" />
                 <Button Content="管理者でSensorHelperを再起動して再試行" Width="300" Margin="8,0,0,0" Click="RestartHelperAsAdminButton_OnClick" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <CheckBox Content="自動で設定をONにする（実験的・同意必須）" IsChecked="{Binding ExperimentalAutoEnableConsent}" />
+                <Button Content="実験: Shared Memory を自動でON" Width="240" Margin="8,0,0,0" Click="AutoEnableCoreTempSharedMemoryButton_OnClick" />
             </StackPanel>
             <TextBlock Text="{Binding MainFeatureText}" Margin="0,8,0,0" />
         </StackPanel>
