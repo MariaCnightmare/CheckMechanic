@@ -31,6 +31,7 @@
                 <CheckBox Content="自動で設定をONにする（実験的・同意必須）" IsChecked="{Binding ExperimentalAutoEnableConsent}" />
                 <Button Content="実験: Shared Memory を自動でON" Width="240" Margin="8,0,0,0" Click="AutoEnableCoreTempSharedMemoryButton_OnClick" />
             </StackPanel>
+            <CheckBox Content="終了時に Core Temp も終了する（同意時のみ）" IsChecked="{Binding CloseCoreTempOnExitConsent}" Margin="0,8,0,0" />
             <TextBlock Text="{Binding MainFeatureText}" Margin="0,8,0,0" />
         </StackPanel>
 

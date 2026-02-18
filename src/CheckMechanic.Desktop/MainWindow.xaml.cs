@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     public string MainFeatureText { get; set; } = "制限モード: 主要機能は利用できません。診断情報を確認してください。";
     public string DiagnosticSensorsText { get; set; } = "(未取得)";
     public bool ExperimentalAutoEnableConsent { get; set; } = false;
+    public bool CloseCoreTempOnExitConsent { get; set; } = false;
     public ObservableCollection<string> Logs { get; } = new();
 
     public MainWindow()
@@ -49,6 +50,7 @@ public partial class MainWindow : Window
         _timer.Tick += async (_, _) => await PollTelemetryAsync();
 
         Loaded += async (_, _) => await InitializeAsync();
+        Closing += MainWindow_OnClosing;
     }
 
     private async Task InitializeAsync()
@@ -687,4 +689,27 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (!CloseCoreTempOnExitConsent)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var name in new[] { "Core Temp", "CoreTemp" })
+            {
+                foreach (var p in Process.GetProcessesByName(name))
+                {
+                    p.Kill(entireProcessTree: true);
+                }
+            }
+        }
+        catch
+        {
+            // best effort shutdown only
+        }
+    }
 }
