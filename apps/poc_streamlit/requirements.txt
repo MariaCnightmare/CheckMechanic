@@ -1,0 +1,6 @@
+streamlit==1.41.1
+streamlit-autorefresh==1.0.1
+psutil==6.1.1
+requests==2.32.3
+py-cpuinfo==9.0.0
+
