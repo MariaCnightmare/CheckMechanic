@@ -13,11 +13,17 @@ public sealed class CpuTelemetry
     [JsonPropertyName("temp_c")]
     public double? TempC { get; set; }
 
+    [JsonPropertyName("util_percent")]
+    public double? UtilPercent { get; set; }
+
     public string? Label { get; set; }
 
     public string Source { get; set; } = "LibreHardwareMonitorLib";
 
     public string? Error { get; set; }
+
+    [JsonPropertyName("error_code")]
+    public string? ErrorCode { get; set; }
 }
 
 public sealed class TelemetryResponse

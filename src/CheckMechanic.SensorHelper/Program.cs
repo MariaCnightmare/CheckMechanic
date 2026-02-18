@@ -210,11 +210,16 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 
     if (monitor is null)
     {
+        var initCode = sensorInitError == "sensor backend initializing"
+            ? "sensor_backend_initializing"
+            : "sensor_backend_init_failed";
         return new CpuTelemetry
         {
             TempC = null,
+            UtilPercent = null,
             Label = null,
             Error = sensorInitError ?? "sensor backend unavailable",
+            ErrorCode = initCode,
         };
     }
 
@@ -226,8 +231,10 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
             return new CpuTelemetry
             {
                 TempC = null,
+                UtilPercent = null,
                 Label = null,
                 Error = "temperature sensor not found",
+                ErrorCode = "temperature_sensor_not_found",
             };
         }
 
@@ -240,12 +247,16 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
         var anyPackage = sensors.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
         var anySensor = sensors.FirstOrDefault();
         var picked = valuedCpuLike ?? valuedPackage ?? anyValued ?? anyCpuLike ?? anyPackage ?? anySensor;
+        var temp = picked is null ? null : EffectiveTemp(picked);
+        var util = ReadCpuUtilization(monitor);
 
         return new CpuTelemetry
         {
-            TempC = picked is null ? null : EffectiveTemp(picked),
+            TempC = temp,
+            UtilPercent = util,
             Label = picked is null ? null : $"{picked.HardwareName} / {picked.SensorName}",
-            Error = picked is null || EffectiveTemp(picked) is null ? "temperature unavailable" : null,
+            Error = picked is null || temp is null ? "temperature unavailable" : null,
+            ErrorCode = picked is null || temp is null ? "sensor_values_unavailable" : null,
         };
     }
     catch
@@ -253,8 +264,10 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
         return new CpuTelemetry
         {
             TempC = null,
+            UtilPercent = ReadCpuUtilization(monitor),
             Label = null,
             Error = "failed to read cpu temperature",
+            ErrorCode = "sensor_read_failed",
         };
     }
 }
@@ -290,3 +303,45 @@ static void WalkHardware(IHardware hw, List<TempSensorSnapshot> sensors)
 }
 
 record TempSensorSnapshot(string HardwareName, string SensorName, float? Value, float? Min, float? Max);
+
+static double? ReadCpuUtilization(Computer? monitor)
+{
+    if (monitor is null)
+    {
+        return null;
+    }
+
+    try
+    {
+        var loadSensors = new List<ISensor>();
+        foreach (var hw in monitor.Hardware.Where(h => h.HardwareType == HardwareType.Cpu))
+        {
+            hw.Update();
+            loadSensors.AddRange(hw.Sensors.Where(s => s.SensorType == SensorType.Load));
+            foreach (var sub in hw.SubHardware)
+            {
+                sub.Update();
+                loadSensors.AddRange(sub.Sensors.Where(s => s.SensorType == SensorType.Load));
+            }
+        }
+
+        var total = loadSensors.FirstOrDefault(s =>
+            s.Name.Contains("total", StringComparison.OrdinalIgnoreCase) && s.Value is not null);
+        if (total?.Value is float totalValue)
+        {
+            return totalValue;
+        }
+
+        var first = loadSensors.FirstOrDefault(s => s.Value is not null);
+        if (first?.Value is float firstValue)
+        {
+            return firstValue;
+        }
+
+        return null;
+    }
+    catch
+    {
+        return null;
+    }
+}

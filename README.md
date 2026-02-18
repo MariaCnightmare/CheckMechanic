@@ -46,7 +46,8 @@ streamlit run app.py
   - `127.0.0.1:17805` で `/health`, `/v1/telemetry` を提供
 - `src/CheckMechanic.Desktop`:
   - SensorHelper のヘルスチェックと自動起動
-  - 温度表示・ステータス表示・再接続/再起動ボタン・簡易ログ
+  - 温度表示・CPU使用率表示・ステータス表示・再接続/再起動ボタン・簡易ログ
+  - 温度値が取得できない環境では、環境制約の可能性を明示して継続動作
 
 ### Build / Run（Windows, .NET 8）
 ```bash

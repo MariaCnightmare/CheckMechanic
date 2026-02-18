@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _timer;
 
     public string CpuTemperatureText { get; set; } = "未取得";
+    public string CpuUtilizationText { get; set; } = "CPU使用率: 未取得";
     public string StatusText { get; set; } = "⚠ 起動中";
     public ObservableCollection<string> Logs { get; } = new();
 
@@ -135,14 +136,23 @@ public partial class MainWindow : Window
             if (payload.Cpu.TempC is double temp)
             {
                 CpuTemperatureText = $"{temp:F1} °C";
+                CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
                 SetStatus("✅ OK");
-                AddLog($"temp={temp:F1}C label={payload.Cpu.Label}");
+                AddLog($"temp={temp:F1}C util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} label={payload.Cpu.Label}");
             }
             else
             {
                 CpuTemperatureText = "未取得";
-                SetStatus("⚠ 温度取得不可");
-                AddLog($"temperature unavailable: {payload.Cpu.Error ?? "unknown"}");
+                CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
+                if (payload.Cpu.ErrorCode is "sensor_values_unavailable" or "sensor_backend_init_failed")
+                {
+                    SetStatus("⚠ 温度未取得（環境制約の可能性）");
+                }
+                else
+                {
+                    SetStatus("⚠ 温度取得不可");
+                }
+                AddLog($"temperature unavailable: code={payload.Cpu.ErrorCode ?? "unknown"} detail={payload.Cpu.Error ?? "unknown"} util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"}");
             }
 
             RefreshBindings();

@@ -7,13 +7,15 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <TextBlock Text="CPU Temperature" FontSize="18" FontWeight="SemiBold" />
         <TextBlock Grid.Row="1" Text="{Binding CpuTemperatureText}" FontSize="48" FontWeight="Bold" Margin="0,8,0,0" />
+        <TextBlock Grid.Row="2" Text="{Binding CpuUtilizationText}" FontSize="16" Margin="0,8,0,0" />
 
-        <StackPanel Grid.Row="2" Orientation="Vertical" Margin="0,12,0,0">
+        <StackPanel Grid.Row="3" Orientation="Vertical" Margin="0,12,0,0">
             <TextBlock Text="{Binding StatusText}" FontSize="16" />
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <Button Content="再接続" Width="120" Margin="0,0,8,0" Click="ReconnectButton_OnClick" />
@@ -21,7 +23,7 @@
             </StackPanel>
         </StackPanel>
 
-        <GroupBox Grid.Row="3" Header="Log" Margin="0,16,0,0">
+        <GroupBox Grid.Row="4" Header="Log" Margin="0,16,0,0">
             <ListBox ItemsSource="{Binding Logs}" />
         </GroupBox>
     </Grid>
