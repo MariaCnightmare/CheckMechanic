@@ -13,12 +13,6 @@
 
     <CornerRadius x:Key="Radius10">10</CornerRadius>
     <CornerRadius x:Key="Radius14">14</CornerRadius>
-    <x:Double x:Key="Space4">4</x:Double>
-    <x:Double x:Key="Space8">8</x:Double>
-    <x:Double x:Key="Space12">12</x:Double>
-    <x:Double x:Key="Space16">16</x:Double>
-    <x:Double x:Key="Space24">24</x:Double>
-
     <Style TargetType="Window">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="Segoe UI" />
