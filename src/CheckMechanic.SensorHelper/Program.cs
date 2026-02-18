@@ -25,28 +25,32 @@ Mutex? instanceMutex = null;
 var ownsMutex = false;
 try
 {
-    // Non-blocking singleton check to avoid hanging when another process holds the mutex.
-    instanceMutex = new Mutex(false, "CheckMechanic.SensorHelper.Singleton", out var createdNew);
-    if (createdNew)
+    // Best-effort singleton guard. Some environments can hang on named mutex APIs.
+    var mutexTask = Task.Run(() =>
     {
-        ownsMutex = instanceMutex.WaitOne(0);
+        var m = new Mutex(false, "CheckMechanic.SensorHelper.Singleton", out _);
+        var owned = m.WaitOne(0);
+        return (Mutex: m, Owned: owned, TimedOut: false);
+    });
+    if (!mutexTask.Wait(TimeSpan.FromMilliseconds(600)))
+    {
+        Log("mutex init timeout, continue without mutex guard");
     }
     else
     {
-        ownsMutex = instanceMutex.WaitOne(0);
-    }
-
-    if (!ownsMutex)
-    {
-        Log("sensor helper already running (mutex locked)");
-        instanceMutex.Dispose();
-        return;
+        instanceMutex = mutexTask.Result.Mutex;
+        ownsMutex = mutexTask.Result.Owned;
+        if (!ownsMutex)
+        {
+            Log("sensor helper already running (mutex locked)");
+            instanceMutex.Dispose();
+            return;
+        }
     }
 }
 catch (Exception ex)
 {
-    Log($"mutex init failed: {ex.GetType().Name}: {ex.Message}");
-    return;
+    Log($"mutex init failed, continue without mutex guard: {ex.GetType().Name}: {ex.Message}");
 }
 
 WebApplicationBuilder builder;
