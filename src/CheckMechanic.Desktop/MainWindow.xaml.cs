@@ -52,10 +52,26 @@ public partial class MainWindow : Window
     public string TempRingArcData { get; set; } = string.Empty;
     public string TempRingCenterText { get; set; } = "--";
     public string TempLatestText { get; set; } = "--";
+    public string TempMin60Text { get; set; } = "--";
+    public string TempMax60Text { get; set; } = "--";
+    public string TempSourceText { get; set; } = "source: unavailable";
     public string CpuLatestText { get; set; } = "--";
+    public string CpuAvg60Text { get; set; } = "--";
     public string MemLatestText { get; set; } = "--";
+    public string MemoryAvailableText { get; set; } = "--";
     public double CpuUtilizationValue { get; set; }
     public double MemoryUtilizationValue { get; set; }
+    public double ScoreCpuValue { get; set; }
+    public double ScoreMemValue { get; set; }
+    public double ScoreDiskValue { get; set; }
+    public double ScoreNetValue { get; set; }
+    public double ScoreTempValue { get; set; }
+    public string ScoreCpuText { get; set; } = "--";
+    public string ScoreMemText { get; set; } = "--";
+    public string ScoreDiskText { get; set; } = "--";
+    public string ScoreNetText { get; set; } = "--";
+    public string ScoreTempText { get; set; } = "--";
+    public Visibility RestrictionVisibility { get; set; } = Visibility.Visible;
 
     public string ProfileOsMajor { get; set; } = "-";
     public string ProfileOsBuildBucket { get; set; } = "-";
@@ -207,17 +223,19 @@ public partial class MainWindow : Window
             CpuUtilizationValue = payload.Cpu.UtilPercent is double cpuVal ? Math.Clamp(cpuVal, 0, 100) : 0;
             MemoryText = BuildMemoryText(payload.Memory);
             MemoryUtilizationValue = payload.Memory.UtilPercent is double memVal ? Math.Clamp(memVal, 0, 100) : 0;
+            MemoryAvailableText = BuildMemoryAvailableText(payload.Memory);
             DiskText = $"R {FormatRate(payload.Disk.ReadBps)} / W {FormatRate(payload.Disk.WriteBps)}";
             NetText = $"↓ {FormatRate(payload.Net.RecvBps)} / ↑ {FormatRate(payload.Net.SentBps)}";
             CpuLatestText = payload.Cpu.UtilPercent is double cu ? $"{cu:F1}%" : "--";
             MemLatestText = payload.Memory.UtilPercent is double mu ? $"{mu:F1}%" : "--";
+            TempSourceText = $"source: {payload.Cpu.ProviderUsed ?? payload.Cpu.Source ?? "unavailable"}";
 
             if (payload.Cpu.TempC is double temp)
             {
                 CpuTemperatureText = $"{temp:F1} °C";
                 TempLatestText = $"{temp:F1}°C";
                 TempRingCenterText = $"{temp:F0}";
-                TempRingArcData = BuildRingArcPath(temp, 30, 100, 86, 10);
+                TempRingArcData = BuildRingArcPath(temp, 30, 100, 104, 12);
                 SetStatus("✅ OK");
                 SetRestrictedMode(false, string.Empty, string.Empty);
                 AddLog($"temp={temp:F1}C util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider={payload.Cpu.ProviderUsed ?? "unknown"} label={payload.Cpu.Label}");
@@ -228,6 +246,7 @@ public partial class MainWindow : Window
                 TempLatestText = "Restricted";
                 TempRingCenterText = "R";
                 TempRingArcData = string.Empty;
+                TempSourceText = "source: unavailable";
                 SetStatus("❌ 必須要件未達（温度取得不可）");
                 SetRestrictedMode(
                     true,
@@ -248,6 +267,7 @@ public partial class MainWindow : Window
             TempLatestText = "--";
             TempRingCenterText = "R";
             TempRingArcData = string.Empty;
+            TempSourceText = "source: unavailable";
             SetStatus("❌ SensorHelper 未接続");
             SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
             AddLog(SanitizeError(ex.Message));
@@ -259,6 +279,7 @@ public partial class MainWindow : Window
             TempLatestText = "--";
             TempRingCenterText = "R";
             TempRingArcData = string.Empty;
+            TempSourceText = "source: unavailable";
             SetStatus("❌ 取得失敗");
             SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
             AddLog("telemetry request failed");
@@ -359,6 +380,17 @@ public partial class MainWindow : Window
         var final = Math.Clamp((int)Math.Round(score * 100), 0, 100);
         var rank = final >= 90 ? "S" : final >= 75 ? "A" : final >= 55 ? "B" : "C";
         PerfScoreText = $"{final} ({rank})";
+
+        ScoreCpuValue = Math.Round(cpu * 100, 1);
+        ScoreMemValue = Math.Round(mem * 100, 1);
+        ScoreDiskValue = Math.Round(disk * 100, 1);
+        ScoreNetValue = Math.Round(net * 100, 1);
+        ScoreTempValue = Math.Round(tempStress * 100, 1);
+        ScoreCpuText = $"{ScoreCpuValue:F0}";
+        ScoreMemText = $"{ScoreMemValue:F0}";
+        ScoreDiskText = $"{ScoreDiskValue:F0}";
+        ScoreNetText = $"{ScoreNetValue:F0}";
+        ScoreTempText = $"{ScoreTempValue:F0}";
     }
 
     private static double NormalizePercent(double? value)
@@ -401,9 +433,16 @@ public partial class MainWindow : Window
 
     private void RefreshChartData()
     {
-        TempChartData = BuildSparklinePath(_tempHistory, 1020, 150, 30, 100);
-        CpuChartData = BuildSparklinePath(_cpuHistory, 1020, 150, 0, 100);
-        MemChartData = BuildSparklinePath(_memHistory, 1020, 150, 0, 100);
+        TempChartData = BuildSparklinePath(_tempHistory, 430, 160, 30, 100);
+        CpuChartData = BuildSparklinePath(_cpuHistory, 430, 160, 0, 100);
+        MemChartData = BuildSparklinePath(_memHistory, 430, 160, 0, 100);
+
+        var tempValues = _tempHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        TempMin60Text = tempValues.Count > 0 ? $"{tempValues.Min():F1}°C" : "--";
+        TempMax60Text = tempValues.Count > 0 ? $"{tempValues.Max():F1}°C" : "--";
+
+        var cpuValues = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        CpuAvg60Text = cpuValues.Count > 0 ? $"{cpuValues.Average():F1}%" : "--";
     }
 
     private static string BuildSparklinePath(IEnumerable<double?> values, double width, double height, double minY, double maxY)
@@ -480,6 +519,17 @@ public partial class MainWindow : Window
         var total = memory.TotalBytes.Value / 1024d / 1024d / 1024d;
         var util = memory.UtilPercent.HasValue ? $" ({memory.UtilPercent.Value:F1}%)" : string.Empty;
         return $"{used:F1} / {total:F1} GB{util}";
+    }
+
+    private static string BuildMemoryAvailableText(MemoryTelemetry memory)
+    {
+        if (!memory.TotalBytes.HasValue || !memory.UsedBytes.HasValue)
+        {
+            return "--";
+        }
+
+        var available = (memory.TotalBytes.Value - memory.UsedBytes.Value) / 1024d / 1024d / 1024d;
+        return $"{available:F1} GB";
     }
 
     private static string FormatRate(double? bps)
@@ -686,11 +736,17 @@ public partial class MainWindow : Window
             StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(24, 58, 44));
             StatusBadgeBorder = new SolidColorBrush(Color.FromRgb(61, 132, 101));
         }
-        else if (text.Contains("❌", StringComparison.Ordinal))
+        else if (text.Contains("必須要件未達", StringComparison.Ordinal) || text.Contains("温度取得不可", StringComparison.Ordinal))
         {
-            StatusBadgeText = "RESTRICTED";
+            StatusBadgeText = "LOCKED";
             StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(57, 30, 36));
             StatusBadgeBorder = new SolidColorBrush(Color.FromRgb(147, 78, 91));
+        }
+        else if (text.Contains("❌", StringComparison.Ordinal))
+        {
+            StatusBadgeText = "DEGRADED";
+            StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(60, 52, 26));
+            StatusBadgeBorder = new SolidColorBrush(Color.FromRgb(156, 136, 71));
         }
         else
         {
@@ -705,6 +761,7 @@ public partial class MainWindow : Window
     {
         RestrictionText = restricted ? reason : string.Empty;
         SetupInstructionsText = restricted ? setupInstructions : string.Empty;
+        RestrictionVisibility = restricted ? Visibility.Visible : Visibility.Collapsed;
         MainFeatureText = restricted
             ? "制限モード: 温度取得が確認できるまで主要画面は利用不可です。診断情報を確認してください。"
             : "通常モード: 温度取得を確認済みです。";
