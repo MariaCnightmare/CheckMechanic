@@ -35,28 +35,45 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 Computer? monitor = null;
-string? sensorInitError = null;
-try
+string? sensorInitError = "sensor backend initializing";
+var monitorSync = new object();
+
+_ = Task.Run(() =>
 {
-    monitor = new Computer
+    try
     {
-        IsCpuEnabled = true,
-        IsMotherboardEnabled = false,
-        IsGpuEnabled = false,
-        IsMemoryEnabled = false,
-        IsStorageEnabled = false,
-        IsNetworkEnabled = false,
-    };
-    monitor.Open();
-}
-catch (Exception)
-{
-    sensorInitError = "sensor backend init failed";
-}
+        var m = new Computer
+        {
+            IsCpuEnabled = true,
+            IsMotherboardEnabled = false,
+            IsGpuEnabled = false,
+            IsMemoryEnabled = false,
+            IsStorageEnabled = false,
+            IsNetworkEnabled = false,
+        };
+        m.Open();
+        lock (monitorSync)
+        {
+            monitor = m;
+            sensorInitError = null;
+        }
+    }
+    catch (Exception)
+    {
+        lock (monitorSync)
+        {
+            monitor = null;
+            sensorInitError = "sensor backend init failed";
+        }
+    }
+});
 
 app.Lifetime.ApplicationStopping.Register(() =>
 {
-    monitor?.Close();
+    lock (monitorSync)
+    {
+        monitor?.Close();
+    }
     instanceMutex?.Dispose();
 });
 
@@ -68,7 +85,14 @@ app.MapGet("/health", () => Results.Ok(new HealthResponse
 
 app.MapGet("/v1/telemetry", () =>
 {
-    var cpu = ReadCpuTelemetry(monitor, sensorInitError);
+    Computer? currentMonitor;
+    string? currentInitError;
+    lock (monitorSync)
+    {
+        currentMonitor = monitor;
+        currentInitError = sensorInitError;
+    }
+    var cpu = ReadCpuTelemetry(currentMonitor, currentInitError);
     return Results.Ok(new TelemetryResponse
     {
         Ts = DateTimeOffset.Now,
