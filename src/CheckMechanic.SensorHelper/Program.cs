@@ -34,7 +34,7 @@ _ = Task.Run(() =>
         var m = new Computer
         {
             IsCpuEnabled = true,
-            IsMotherboardEnabled = false,
+            IsMotherboardEnabled = true,
             IsGpuEnabled = false,
             IsMemoryEnabled = false,
             IsStorageEnabled = false,
@@ -134,6 +134,34 @@ while (listener.IsListening)
                 return;
             }
 
+            if (path.Equals("/v1/sensors", StringComparison.OrdinalIgnoreCase))
+            {
+                Computer? currentMonitor;
+                lock (monitorSync)
+                {
+                    currentMonitor = monitor;
+                }
+
+                if (currentMonitor is null)
+                {
+                    await WriteJsonAsync(ctx.Response, 200, new { sensors = Array.Empty<object>() });
+                    return;
+                }
+
+                var sensors = CollectTemperatureSensors(currentMonitor)
+                    .Select(s => new
+                    {
+                        hardware = s.HardwareName,
+                        sensor = s.SensorName,
+                        value = s.Value,
+                        min = s.Min,
+                        max = s.Max,
+                    })
+                    .ToList();
+                await WriteJsonAsync(ctx.Response, 200, new { sensors });
+                return;
+            }
+
             await WriteJsonAsync(ctx.Response, 404, new { error = "not found" });
         }
         catch (Exception ex)
@@ -163,7 +191,7 @@ static async Task WriteJsonAsync(HttpListenerResponse response, int statusCode, 
 
 static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 {
-    static double? EffectiveTemp(ISensor s)
+    static double? EffectiveTemp(TempSensorSnapshot s)
     {
         if (s.Value is float v)
         {
@@ -192,34 +220,7 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 
     try
     {
-        var cpuHardwares = monitor.Hardware.Where(h => h.HardwareType == HardwareType.Cpu).ToList();
-        if (cpuHardwares.Count == 0)
-        {
-            return new CpuTelemetry
-            {
-                TempC = null,
-                Label = null,
-                Error = "cpu hardware not found",
-            };
-        }
-
-        var sensors = new List<ISensor>();
-        foreach (var cpuHardware in cpuHardwares)
-        {
-            cpuHardware.Update();
-            foreach (var sub in cpuHardware.SubHardware)
-            {
-                sub.Update();
-            }
-
-            sensors.AddRange(cpuHardware.Sensors.Where(s => s.SensorType == SensorType.Temperature));
-            sensors.AddRange(
-                cpuHardware.SubHardware
-                    .SelectMany(sh => sh.Sensors)
-                    .Where(s => s.SensorType == SensorType.Temperature)
-            );
-        }
-
+        var sensors = CollectTemperatureSensors(monitor);
         if (sensors.Count == 0)
         {
             return new CpuTelemetry
@@ -231,17 +232,19 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
         }
 
         var valued = sensors.Where(s => EffectiveTemp(s) is not null).ToList();
-        var valuedPackage = valued.FirstOrDefault(s => s.Name.Contains("package", StringComparison.OrdinalIgnoreCase));
+        var valuedCpuLike = valued.FirstOrDefault(s => IsCpuLike(s.HardwareName, s.SensorName));
+        var valuedPackage = valued.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
         var anyValued = valued.FirstOrDefault();
 
-        var anyPackage = sensors.FirstOrDefault(s => s.Name.Contains("package", StringComparison.OrdinalIgnoreCase));
+        var anyCpuLike = sensors.FirstOrDefault(s => IsCpuLike(s.HardwareName, s.SensorName));
+        var anyPackage = sensors.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
         var anySensor = sensors.FirstOrDefault();
-        var picked = valuedPackage ?? anyValued ?? anyPackage ?? anySensor;
+        var picked = valuedCpuLike ?? valuedPackage ?? anyValued ?? anyCpuLike ?? anyPackage ?? anySensor;
 
         return new CpuTelemetry
         {
             TempC = picked is null ? null : EffectiveTemp(picked),
-            Label = picked?.Name,
+            Label = picked is null ? null : $"{picked.HardwareName} / {picked.SensorName}",
             Error = picked is null || EffectiveTemp(picked) is null ? "temperature unavailable" : null,
         };
     }
@@ -255,3 +258,35 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
         };
     }
 }
+
+static bool IsCpuLike(string hardwareName, string sensorName)
+{
+    var h = hardwareName.ToLowerInvariant();
+    var s = sensorName.ToLowerInvariant();
+    return h.Contains("cpu") || s.Contains("cpu") || s.Contains("package") || s.Contains("tctl") || s.Contains("tdie");
+}
+
+static List<TempSensorSnapshot> CollectTemperatureSensors(Computer monitor)
+{
+    var sensors = new List<TempSensorSnapshot>();
+    foreach (var hw in monitor.Hardware)
+    {
+        WalkHardware(hw, sensors);
+    }
+    return sensors;
+}
+
+static void WalkHardware(IHardware hw, List<TempSensorSnapshot> sensors)
+{
+    hw.Update();
+    foreach (var s in hw.Sensors.Where(x => x.SensorType == SensorType.Temperature))
+    {
+        sensors.Add(new TempSensorSnapshot(hw.Name, s.Name, s.Value, s.Min, s.Max));
+    }
+    foreach (var sub in hw.SubHardware)
+    {
+        WalkHardware(sub, sensors);
+    }
+}
+
+record TempSensorSnapshot(string HardwareName, string SensorName, float? Value, float? Min, float? Max);
