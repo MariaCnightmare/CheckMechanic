@@ -4,13 +4,14 @@ import json
 import platform
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cpuinfo
 import psutil
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
+from consent import build_telemetry_payload, get_or_create_consent_token, get_token_hash_sha256, telemetry_preview_lines
 from lhm_client import fetch_lhm_leaves, pick_temperature
 
 
@@ -91,7 +92,8 @@ def sample_temperature(
     enable_lhm: bool,
     lhm_base_url: str,
     temp_keywords: list[str],
-) -> Tuple[Optional[float], Optional[str], Optional[str]]:
+) -> Tuple[Optional[float], Optional[str], Optional[str], List[Tuple[str, str]]]:
+    notices: List[Tuple[str, str]] = []
     try:
         temps = psutil.sensors_temperatures(fahrenheit=False)
         if temps:
@@ -105,20 +107,21 @@ def sample_temperature(
                             break
                         best = best or t
                     if best is not None:
-                        return float(best.current), f"{k}:{best.label or 'temp'}", "psutil"
-    except Exception:
-        pass
+                        return float(best.current), f"{k}:{best.label or 'temp'}", "psutil", notices
+    except Exception as exc:
+        notices.append(("warning", f"温度センサー取得(psutil)に失敗: {type(exc).__name__}: {exc}"))
 
     if enable_lhm:
         try:
             leaves = fetch_lhm_leaves(base_url=lhm_base_url)
             leaf = pick_temperature(leaves, include_keywords=temp_keywords)
             if leaf and leaf.value_num is not None:
-                return float(leaf.value_num), leaf.path, "LibreHardwareMonitor(/data.json)"
-        except Exception:
-            return None, None, None
+                return float(leaf.value_num), leaf.path, "LibreHardwareMonitor(/data.json)", notices
+            notices.append(("warning", "LHM data.json は取得できましたが、一致する温度センサーが見つかりませんでした。"))
+        except Exception as exc:
+            notices.append(("error", f"LHM data.json 取得に失敗: {type(exc).__name__}: {exc}"))
 
-    return None, None, None
+    return None, None, None, notices
 
 
 st.set_page_config(page_title="CheckMechanic PoC", layout="wide")
@@ -140,6 +143,11 @@ with st.sidebar:
     temp_keywords = [x.strip() for x in temp_keywords_raw.split(",") if x.strip()]
 
     st.divider()
+    st.subheader("データ送信同意")
+    opt_in = st.checkbox("匿名化・カテゴリ化データの送信に同意する（opt-in）", value=False)
+    st.caption("既定はOFFです。同意ON時のみ送信用テレメトリJSONを生成できます。")
+
+    st.divider()
     if st.button("スナップショットを初期化（履歴クリア）"):
         st.session_state.pop("history", None)
         st.session_state.pop("prev", None)
@@ -157,7 +165,7 @@ prev = st.session_state.get("prev")
 cur = sample_psutil(prev)
 st.session_state["prev"] = cur
 
-temp_c, temp_label, temp_src = sample_temperature(enable_lhm, lhm_base_url, temp_keywords)
+temp_c, temp_label, temp_src, temp_notices = sample_temperature(enable_lhm, lhm_base_url, temp_keywords)
 cur["cpu_temp_c"] = temp_c
 cur["cpu_temp_label"] = temp_label
 cur["cpu_temp_source"] = temp_src
@@ -179,6 +187,11 @@ if temp_c is not None:
     st.success(f"温度: {temp_c:.1f} °C  （{temp_label} / {temp_src}）")
 else:
     st.warning("温度: 取得できません（WindowsならLibreHardwareMonitorの Remote Web Server をONにして /data.json を確認）")
+for level, message in temp_notices:
+    if level == "error":
+        st.error(message)
+    else:
+        st.warning(message)
 
 st.subheader("システム情報")
 st.json(sysinfo)
@@ -225,3 +238,21 @@ st.download_button(
     mime="application/json",
 )
 
+if opt_in:
+    try:
+        consent_token = get_or_create_consent_token()
+        token_hash_sha256 = get_token_hash_sha256(consent_token)
+        telemetry_obj = build_telemetry_payload(hist, token_hash_sha256=token_hash_sha256)
+
+        st.markdown("送信用テレメトリ項目（プレビュー）")
+        for line in telemetry_preview_lines(telemetry_obj):
+            st.write(f"- {line}")
+        st.json(telemetry_obj)
+        st.download_button(
+            label="送信用テレメトリJSONをダウンロード",
+            data=json.dumps(telemetry_obj, ensure_ascii=False, indent=2),
+            file_name=f"checkmechanic_telemetry_v1_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json",
+        )
+    except Exception as exc:
+        st.error(f"送信用テレメトリJSON生成に失敗: {type(exc).__name__}: {exc}")

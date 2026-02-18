@@ -24,4 +24,16 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
+```
 
+### Consent / Telemetry v1 動作確認
+1. `opt-in` を OFF のまま表示確認:
+- 「スナップショットJSONをダウンロード」は表示される
+- 「送信用テレメトリJSONをダウンロード」は表示されない
+2. `opt-in` を ON にして表示確認:
+- `~/.checkmechanic/consent_token` が作成される（初回のみ）
+- 送信用テレメトリのプレビューと JSON ダウンロードが表示される
+3. 再起動して確認:
+- `~/.checkmechanic/consent_token` は再利用され、同じ `token_hash_sha256` になる
+4. LHM 未起動/未接続確認:
+- 画面は停止せず、理由が `warning/error` で表示される
