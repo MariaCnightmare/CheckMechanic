@@ -13,6 +13,7 @@
 
     <CornerRadius x:Key="Radius10">10</CornerRadius>
     <CornerRadius x:Key="Radius14">14</CornerRadius>
+    <CornerRadius x:Key="Radius16">16</CornerRadius>
     <Style TargetType="Window">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         <Setter Property="FontFamily" Value="Segoe UI" />
@@ -80,8 +81,8 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="{StaticResource Radius10}" />
-        <Setter Property="Padding" Value="14" />
+        <Setter Property="CornerRadius" Value="{StaticResource Radius16}" />
+        <Setter Property="Padding" Value="16" />
     </Style>
 
     <Style x:Key="StatusBadgeStyle" TargetType="Border">

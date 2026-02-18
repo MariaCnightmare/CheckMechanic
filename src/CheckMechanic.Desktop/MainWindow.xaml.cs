@@ -24,18 +24,28 @@ public partial class MainWindow : Window
     private readonly Queue<double?> _tempHistory = new();
     private readonly Queue<double?> _cpuHistory = new();
     private readonly Queue<double?> _memHistory = new();
+    private readonly Queue<double?> _diskHistory = new();
+    private readonly Queue<double?> _netHistory = new();
+    private readonly List<int> _localScoreHistory = new();
 
     private string _lastTelemetryJson = "{}";
     private string _lastProfileJson = "{}";
     private int _pollCount;
     private bool _optInConsent;
+    private int _latestPerfScore;
+    private string _latestPerfGrade = "N/A";
 
     public string CpuTemperatureText { get; set; } = "未取得";
+    public string CpuKpiText { get; set; } = "--";
     public string CpuUtilizationText { get; set; } = "CPU使用率: 未取得";
+    public string CpuAvgText { get; set; } = "avg(60s): --";
     public string MemoryText { get; set; } = "未取得";
+    public string MemoryKpiText { get; set; } = "--";
+    public string MemorySubText { get; set; } = "--";
     public string DiskText { get; set; } = "未取得";
     public string NetText { get; set; } = "未取得";
     public string PerfScoreText { get; set; } = "-- (N/A)";
+    public string PerfSummaryText { get; set; } = "総合状態: --";
     public string StatusText { get; set; } = "⚠ 起動中";
     public string StatusBadgeText { get; set; } = "STARTING";
     public Brush StatusBadgeBackground { get; set; } = new SolidColorBrush(Color.FromRgb(24, 40, 56));
@@ -55,6 +65,7 @@ public partial class MainWindow : Window
     public string TempMin60Text { get; set; } = "--";
     public string TempMax60Text { get; set; } = "--";
     public string TempSourceText { get; set; } = "source: unavailable";
+    public string TempStatsText { get; set; } = "Latest -- / Min -- / Max --";
     public string CpuLatestText { get; set; } = "--";
     public string CpuAvg60Text { get; set; } = "--";
     public string MemLatestText { get; set; } = "--";
@@ -72,15 +83,19 @@ public partial class MainWindow : Window
     public string ScoreNetText { get; set; } = "--";
     public string ScoreTempText { get; set; } = "--";
     public Visibility RestrictionVisibility { get; set; } = Visibility.Visible;
+    public string DiagnosticsSummaryText { get; set; } = "errors:0 / provider:- / updated:-";
+    public string LocalRankingText { get; set; } = "ローカル履歴: N/A";
 
     public string ProfileOsMajor { get; set; } = "-";
     public string ProfileOsBuildBucket { get; set; } = "-";
+    public string ProfileOsText { get; set; } = "-";
     public string ProfileCpuBrand { get; set; } = "-";
     public string ProfileCoreText { get; set; } = "-";
     public string ProfileMemoryBucket { get; set; } = "-";
     public string ProfileGpuName { get; set; } = "-";
     public string ProfileStorageType { get; set; } = "-";
     public string ProfileStorageBucket { get; set; } = "-";
+    public string ProfileStorageText { get; set; } = "-";
     public string ProfileDeviceClass { get; set; } = "-";
     public string ProfileTempProvider { get; set; } = "-";
     public bool CloseCoreTempOnExitConsent { get; set; }
@@ -93,6 +108,7 @@ public partial class MainWindow : Window
         {
             _optInConsent = value;
             UpdateRankingPreview();
+            UpdateLocalRankingText();
             RefreshBindings();
         }
     }
@@ -111,6 +127,7 @@ public partial class MainWindow : Window
 
     private async Task InitializeAsync()
     {
+        LoadLocalScoreHistory();
         await EnsureHelperAvailableAsync();
         await PollAllAsync(forceProfile: true);
         await RefreshDiagnosticsAsync();
@@ -221,9 +238,12 @@ public partial class MainWindow : Window
 
             CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
             CpuUtilizationValue = payload.Cpu.UtilPercent is double cpuVal ? Math.Clamp(cpuVal, 0, 100) : 0;
+            CpuKpiText = payload.Cpu.UtilPercent is double cpuNow ? $"{cpuNow:F1}%" : "--";
             MemoryText = BuildMemoryText(payload.Memory);
             MemoryUtilizationValue = payload.Memory.UtilPercent is double memVal ? Math.Clamp(memVal, 0, 100) : 0;
             MemoryAvailableText = BuildMemoryAvailableText(payload.Memory);
+            MemoryKpiText = BuildMemoryKpiText(payload.Memory);
+            MemorySubText = payload.Memory.UtilPercent is double memNow ? $"({memNow:F1}%) / available {MemoryAvailableText}" : $"available {MemoryAvailableText}";
             DiskText = $"R {FormatRate(payload.Disk.ReadBps)} / W {FormatRate(payload.Disk.WriteBps)}";
             NetText = $"↓ {FormatRate(payload.Net.RecvBps)} / ↑ {FormatRate(payload.Net.SentBps)}";
             CpuLatestText = payload.Cpu.UtilPercent is double cu ? $"{cu:F1}%" : "--";
@@ -256,9 +276,23 @@ public partial class MainWindow : Window
                 AddLog($"temperature unavailable: code={payload.Cpu.ErrorCode ?? "unknown"} detail={payload.Cpu.Error ?? "unknown"} util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider_errors={providerErrors}");
             }
 
+            double? diskTotal = (payload.Disk.ReadBps.HasValue || payload.Disk.WriteBps.HasValue)
+                ? payload.Disk.ReadBps.GetValueOrDefault() + payload.Disk.WriteBps.GetValueOrDefault()
+                : null;
+            double? netTotal = (payload.Net.RecvBps.HasValue || payload.Net.SentBps.HasValue)
+                ? payload.Net.RecvBps.GetValueOrDefault() + payload.Net.SentBps.GetValueOrDefault()
+                : null;
+            AppendHistory(
+                payload.Cpu.TempC,
+                payload.Cpu.UtilPercent,
+                payload.Memory.UtilPercent,
+                diskTotal,
+                netTotal);
             UpdateScore(payload);
-            AppendHistory(payload.Cpu.TempC, payload.Cpu.UtilPercent, payload.Memory.UtilPercent);
             RefreshChartData();
+            TempStatsText = $"Latest {TempLatestText} / Min {TempMin60Text} / Max {TempMax60Text}";
+            CpuAvgText = $"avg(60s): {CpuAvg60Text}";
+            DiagnosticsSummaryText = BuildDiagnosticsSummary(payload);
             RefreshBindings();
         }
         catch (HttpRequestException ex)
@@ -305,6 +339,7 @@ public partial class MainWindow : Window
             var profile = JsonSerializer.Deserialize<SystemProfileDto>(raw, JsonOptions) ?? new SystemProfileDto();
             ProfileOsMajor = profile.OsMajor ?? "-";
             ProfileOsBuildBucket = profile.OsBuildBucket ?? "-";
+            ProfileOsText = $"{ProfileOsMajor} / {ProfileOsBuildBucket}";
             ProfileCpuBrand = profile.CpuBrand ?? "-";
             var logical = profile.LogicalCores?.ToString() ?? "-";
             var physical = profile.PhysicalCores?.ToString() ?? "-";
@@ -313,6 +348,7 @@ public partial class MainWindow : Window
             ProfileGpuName = profile.GpuName ?? "-";
             ProfileStorageType = profile.StoragePrimaryType ?? "-";
             ProfileStorageBucket = profile.StorageTotalGbBucket ?? "-";
+            ProfileStorageText = $"{ProfileStorageType} / {ProfileStorageBucket}";
             ProfileDeviceClass = profile.DeviceClass ?? "-";
             ProfileTempProvider = profile.TempProvider ?? "-";
             UpdateRankingPreview();
@@ -322,12 +358,14 @@ public partial class MainWindow : Window
             ProfileText = "{\"error\":\"profile_unavailable\"}";
             ProfileOsMajor = "-";
             ProfileOsBuildBucket = "-";
+            ProfileOsText = "-";
             ProfileCpuBrand = "-";
             ProfileCoreText = "-";
             ProfileMemoryBucket = "-";
             ProfileGpuName = "-";
             ProfileStorageType = "-";
             ProfileStorageBucket = "-";
+            ProfileStorageText = "-";
             ProfileDeviceClass = "-";
             ProfileTempProvider = "-";
             UpdateRankingPreview();
@@ -364,62 +402,60 @@ public partial class MainWindow : Window
 
     private void UpdateScore(TelemetryResponse payload)
     {
-        var cpu = NormalizePercent(payload.Cpu.UtilPercent);
-        var mem = NormalizePercent(payload.Memory.UtilPercent);
-        var disk = NormalizeRate(payload.Disk.ReadBps.GetValueOrDefault() + payload.Disk.WriteBps.GetValueOrDefault(), 300 * 1024 * 1024);
-        var net = NormalizeRate(payload.Net.RecvBps.GetValueOrDefault() + payload.Net.SentBps.GetValueOrDefault(), 100 * 1024 * 1024);
-        var tempStress = NormalizeTempStress(payload.Cpu.TempC);
+        var cpuHistory = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        var memHistory = _memHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
 
-        var score =
-            (cpu * 0.30) +
-            (mem * 0.20) +
-            (disk * 0.20) +
-            (net * 0.10) +
-            (tempStress * 0.20);
+        var result = PerfScoreCalculator.Calculate(
+            payload.Cpu.TempC,
+            cpuHistory,
+            memHistory,
+            _diskHistory.ToList(),
+            _netHistory.ToList());
 
-        var final = Math.Clamp((int)Math.Round(score * 100), 0, 100);
-        var rank = final >= 90 ? "S" : final >= 75 ? "A" : final >= 55 ? "B" : "C";
-        PerfScoreText = $"{final} ({rank})";
+        if (result.IsLocked)
+        {
+            PerfScoreText = "N/A (LOCKED)";
+            PerfSummaryText = "温度要件未達のため評価不可";
+            ScoreCpuValue = 0;
+            ScoreMemValue = 0;
+            ScoreDiskValue = 0;
+            ScoreNetValue = 0;
+            ScoreTempValue = 0;
+            ScoreCpuText = "--";
+            ScoreMemText = "--";
+            ScoreDiskText = "--";
+            ScoreNetText = "--";
+            ScoreTempText = "--";
+            return;
+        }
 
-        ScoreCpuValue = Math.Round(cpu * 100, 1);
-        ScoreMemValue = Math.Round(mem * 100, 1);
-        ScoreDiskValue = Math.Round(disk * 100, 1);
-        ScoreNetValue = Math.Round(net * 100, 1);
-        ScoreTempValue = Math.Round(tempStress * 100, 1);
+        _latestPerfScore = result.Score;
+        _latestPerfGrade = result.Grade;
+        PerfScoreText = $"{result.Score} ({result.Grade})";
+        PerfSummaryText = $"penalty {result.TempPenalty:F0} / stability {result.Stability:F0}";
+
+        ScoreCpuValue = Math.Round(result.CpuHeadroom, 1);
+        ScoreMemValue = Math.Round(result.MemoryHeadroom, 1);
+        ScoreDiskValue = Math.Round(result.DiskHeadroom ?? 0, 1);
+        ScoreNetValue = Math.Round(result.NetworkHeadroom ?? 0, 1);
+        ScoreTempValue = Math.Round(100 - result.TempPenalty * 5, 1);
         ScoreCpuText = $"{ScoreCpuValue:F0}";
         ScoreMemText = $"{ScoreMemValue:F0}";
-        ScoreDiskText = $"{ScoreDiskValue:F0}";
-        ScoreNetText = $"{ScoreNetValue:F0}";
+        ScoreDiskText = result.DiskHeadroom.HasValue ? $"{ScoreDiskValue:F0}" : "N/A";
+        ScoreNetText = result.NetworkHeadroom.HasValue ? $"{ScoreNetValue:F0}" : "N/A";
         ScoreTempText = $"{ScoreTempValue:F0}";
+
+        PersistLocalScoreIfOptIn(result.Score);
+        UpdateLocalRankingText();
     }
 
-    private static double NormalizePercent(double? value)
+    private void AppendHistory(double? temp, double? cpu, double? mem, double? diskTotalBps, double? netTotalBps)
     {
-        if (!value.HasValue) return 0;
-        return Math.Clamp(value.Value / 100.0, 0, 1);
-    }
-
-    private static double NormalizeRate(double value, double max)
-    {
-        if (max <= 0) return 0;
-        return Math.Clamp(value / max, 0, 1);
-    }
-
-    private static double NormalizeTempStress(double? temp)
-    {
-        if (!temp.HasValue) return 0;
-        if (temp.Value <= 45) return 0.1;
-        if (temp.Value <= 60) return 0.3;
-        if (temp.Value <= 75) return 0.6;
-        if (temp.Value <= 90) return 0.85;
-        return 1.0;
-    }
-
-    private void AppendHistory(double? temp, double? cpu, double? mem)
-    {
-        AppendWithLimit(_tempHistory, temp, 40);
-        AppendWithLimit(_cpuHistory, cpu, 40);
-        AppendWithLimit(_memHistory, mem, 40);
+        AppendWithLimit(_tempHistory, temp, 60);
+        AppendWithLimit(_cpuHistory, cpu, 60);
+        AppendWithLimit(_memHistory, mem, 60);
+        AppendWithLimit(_diskHistory, diskTotalBps, 60);
+        AppendWithLimit(_netHistory, netTotalBps, 60);
     }
 
     private static void AppendWithLimit(Queue<double?> queue, double? value, int max)
@@ -433,9 +469,9 @@ public partial class MainWindow : Window
 
     private void RefreshChartData()
     {
-        TempChartData = BuildSparklinePath(_tempHistory, 430, 160, 30, 100);
-        CpuChartData = BuildSparklinePath(_cpuHistory, 430, 160, 0, 100);
-        MemChartData = BuildSparklinePath(_memHistory, 430, 160, 0, 100);
+        TempChartData = BuildSparklinePath(_tempHistory, 780, 190, 30, 100);
+        CpuChartData = BuildSparklinePath(_cpuHistory, 780, 190, 0, 100);
+        MemChartData = BuildSparklinePath(_memHistory, 780, 190, 0, 100);
 
         var tempValues = _tempHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
         TempMin60Text = tempValues.Count > 0 ? $"{tempValues.Min():F1}°C" : "--";
@@ -530,6 +566,100 @@ public partial class MainWindow : Window
 
         var available = (memory.TotalBytes.Value - memory.UsedBytes.Value) / 1024d / 1024d / 1024d;
         return $"{available:F1} GB";
+    }
+
+    private static string BuildMemoryKpiText(MemoryTelemetry memory)
+    {
+        if (!memory.TotalBytes.HasValue || !memory.UsedBytes.HasValue)
+        {
+            return "--";
+        }
+
+        var used = memory.UsedBytes.Value / 1024d / 1024d / 1024d;
+        var total = memory.TotalBytes.Value / 1024d / 1024d / 1024d;
+        return $"{used:F1} / {total:F1} GB";
+    }
+
+    private static string BuildDiagnosticsSummary(TelemetryResponse payload)
+    {
+        var provider = payload.Cpu.ProviderUsed ?? "none";
+        var errors = payload.Cpu.ProviderErrors?.Count ?? 0;
+        return $"errors:{errors} / provider:{provider} / updated:{DateTime.Now:HH:mm:ss}";
+    }
+
+    private static string GetHistoryFilePath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".checkmechanic");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "perf_history.json");
+    }
+
+    private void LoadLocalScoreHistory()
+    {
+        try
+        {
+            var path = GetHistoryFilePath();
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            var json = File.ReadAllText(path);
+            var history = JsonSerializer.Deserialize<List<int>>(json, JsonOptions) ?? new List<int>();
+            _localScoreHistory.Clear();
+            _localScoreHistory.AddRange(history.Where(x => x is >= 0 and <= 100).TakeLast(30));
+            UpdateLocalRankingText();
+        }
+        catch
+        {
+            _localScoreHistory.Clear();
+            LocalRankingText = "ローカル履歴: 読み込み失敗";
+        }
+    }
+
+    private void PersistLocalScoreIfOptIn(int score)
+    {
+        if (!OptInConsent)
+        {
+            return;
+        }
+
+        try
+        {
+            _localScoreHistory.Add(score);
+            while (_localScoreHistory.Count > 30)
+            {
+                _localScoreHistory.RemoveAt(0);
+            }
+
+            var path = GetHistoryFilePath();
+            File.WriteAllText(path, JsonSerializer.Serialize(_localScoreHistory, JsonOptions));
+        }
+        catch
+        {
+            AddLog("local score history write failed");
+        }
+    }
+
+    private void UpdateLocalRankingText()
+    {
+        if (!OptInConsent)
+        {
+            LocalRankingText = "ローカル履歴: Opt-in OFF";
+            return;
+        }
+
+        if (_localScoreHistory.Count == 0)
+        {
+            LocalRankingText = "ローカル履歴: N/A (Opt-in時に保存)";
+            return;
+        }
+
+        var avg = _localScoreHistory.Average();
+        var best = _localScoreHistory.Max();
+        var worst = _localScoreHistory.Min();
+        var delta = _latestPerfScore - avg;
+        LocalRankingText = $"you:{_latestPerfScore}({_latestPerfGrade}) / avg:{avg:F1} ({delta:+0.0;-0.0;0}) / best:{best} / worst:{worst}";
     }
 
     private static string FormatRate(double? bps)
@@ -683,6 +813,17 @@ public partial class MainWindow : Window
     {
         await RefreshProfileAsync();
         RefreshBindings();
+    }
+
+    private void MoreActionsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.ContextMenu is null)
+        {
+            return;
+        }
+
+        fe.ContextMenu.PlacementTarget = fe;
+        fe.ContextMenu.IsOpen = true;
     }
 
     private void ExportDiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
