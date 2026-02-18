@@ -5,7 +5,22 @@ using LibreHardwareMonitor.Hardware;
 
 const string version = "1.0";
 const int port = 17805;
-Console.WriteLine("sensor helper starting");
+var diagLogPath = Path.Combine(Path.GetTempPath(), "checkmechanic_sensorhelper.log");
+void Log(string message)
+{
+    var line = $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {message}";
+    Console.WriteLine(line);
+    try
+    {
+        File.AppendAllText(diagLogPath, line + Environment.NewLine);
+    }
+    catch
+    {
+        // Best-effort diagnostics only.
+    }
+}
+
+Log("sensor helper starting");
 Mutex? instanceMutex = null;
 try
 {
@@ -13,17 +28,26 @@ try
     instanceMutex = new Mutex(true, "CheckMechanic.SensorHelper.Singleton", out var createdNew);
     if (!createdNew)
     {
-        Console.WriteLine("sensor helper already running");
+        Log("sensor helper already running");
         return;
     }
 }
-catch (Exception)
+catch (Exception ex)
 {
-    Console.Error.WriteLine("mutex init failed");
+    Log($"mutex init failed: {ex.GetType().Name}: {ex.Message}");
     return;
 }
 
-var builder = WebApplication.CreateSlimBuilder(args);
+WebApplicationBuilder builder;
+try
+{
+    builder = WebApplication.CreateSlimBuilder(args);
+}
+catch (Exception ex)
+{
+    Log($"web builder init failed: {ex.GetType().Name}: {ex.Message}");
+    return;
+}
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.Listen(IPAddress.Loopback, port);
@@ -33,7 +57,16 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
 });
 
-var app = builder.Build();
+WebApplication app;
+try
+{
+    app = builder.Build();
+}
+catch (Exception ex)
+{
+    Log($"web app build failed: {ex.GetType().Name}: {ex.Message}");
+    return;
+}
 Computer? monitor = null;
 string? sensorInitError = "sensor backend initializing";
 var monitorSync = new object();
@@ -57,14 +90,16 @@ _ = Task.Run(() =>
             monitor = m;
             sensorInitError = null;
         }
+        Log("sensor backend initialized");
     }
-    catch (Exception)
+    catch (Exception ex)
     {
         lock (monitorSync)
         {
             monitor = null;
             sensorInitError = "sensor backend init failed";
         }
+        Log($"sensor backend init failed: {ex.GetType().Name}: {ex.Message}");
     }
 });
 
@@ -102,16 +137,16 @@ app.MapGet("/v1/telemetry", () =>
 
 try
 {
-    Console.WriteLine($"CheckMechanic.SensorHelper listening on http://127.0.0.1:{port}");
+    Log($"listening on http://127.0.0.1:{port}");
     app.Run();
 }
 catch (IOException ex) when (ex.Message.Contains("address", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("in use", StringComparison.OrdinalIgnoreCase))
 {
-    Console.Error.WriteLine("port in use");
+    Log("port in use");
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"helper fatal error: {ex.GetType().Name}: {ex.Message}");
+    Log($"helper fatal error: {ex.GetType().Name}: {ex.Message}");
 }
 
 static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
