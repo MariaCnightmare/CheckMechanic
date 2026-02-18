@@ -5,9 +5,19 @@ using LibreHardwareMonitor.Hardware;
 
 const string version = "1.0";
 const int port = 17805;
-using var instanceMutex = new Mutex(true, "Global\\CheckMechanic.SensorHelper.Singleton", out var createdNew);
-if (!createdNew)
+Mutex? instanceMutex = null;
+try
 {
+    // Use a local mutex name to avoid Global namespace permission issues on some environments.
+    instanceMutex = new Mutex(true, "CheckMechanic.SensorHelper.Singleton", out var createdNew);
+    if (!createdNew)
+    {
+        return;
+    }
+}
+catch (Exception)
+{
+    Console.Error.WriteLine("mutex init failed");
     return;
 }
 
@@ -45,6 +55,7 @@ catch (Exception)
 app.Lifetime.ApplicationStopping.Register(() =>
 {
     monitor?.Close();
+    instanceMutex?.Dispose();
 });
 
 app.MapGet("/health", () => Results.Ok(new HealthResponse
