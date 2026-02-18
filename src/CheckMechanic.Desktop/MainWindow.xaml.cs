@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
