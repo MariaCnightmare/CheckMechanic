@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using CheckMechanic.Shared;
 using LibreHardwareMonitor.Hardware;
@@ -6,6 +7,7 @@ using LibreHardwareMonitor.Hardware;
 const string version = "1.0";
 const int port = 17805;
 var diagLogPath = Path.Combine(Path.GetTempPath(), "checkmechanic_sensorhelper.log");
+
 void Log(string message)
 {
     var line = $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {message}";
@@ -16,46 +18,11 @@ void Log(string message)
     }
     catch
     {
-        // Best-effort diagnostics only.
     }
 }
 
 Log("sensor helper starting");
-// NOTE: mutex singleton guard is intentionally disabled in this build.
-// Some environments showed startup hangs around named mutex APIs.
-Log("mutex guard disabled");
 
-WebApplicationBuilder builder;
-try
-{
-    builder = WebApplication.CreateSlimBuilder(args);
-    Log("web builder created");
-}
-catch (Exception ex)
-{
-    Log($"web builder init failed: {ex.GetType().Name}: {ex.Message}");
-    return;
-}
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.Listen(IPAddress.Loopback, port);
-});
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-});
-
-WebApplication app;
-try
-{
-    app = builder.Build();
-    Log("web app built");
-}
-catch (Exception ex)
-{
-    Log($"web app build failed: {ex.GetType().Name}: {ex.Message}");
-    return;
-}
 Computer? monitor = null;
 string? sensorInitError = "sensor backend initializing";
 var monitorSync = new object();
@@ -92,49 +59,106 @@ _ = Task.Run(() =>
     }
 });
 
-app.Lifetime.ApplicationStopping.Register(() =>
+var listener = new HttpListener();
+listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+
+try
 {
+    listener.Start();
+    Log($"listening on http://127.0.0.1:{port}");
+}
+catch (Exception ex)
+{
+    Log($"listener start failed: {ex.GetType().Name}: {ex.Message}");
+    return;
+}
+
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true;
+    try
+    {
+        listener.Stop();
+        listener.Close();
+    }
+    catch
+    {
+    }
+
     lock (monitorSync)
     {
         monitor?.Close();
     }
-});
+    Environment.Exit(0);
+};
 
-app.MapGet("/health", () => Results.Ok(new HealthResponse
+while (listener.IsListening)
 {
-    Ok = true,
-    Version = version,
-}));
-
-app.MapGet("/v1/telemetry", () =>
-{
-    Computer? currentMonitor;
-    string? currentInitError;
-    lock (monitorSync)
+    HttpListenerContext ctx;
+    try
     {
-        currentMonitor = monitor;
-        currentInitError = sensorInitError;
+        ctx = listener.GetContext();
     }
-    var cpu = ReadCpuTelemetry(currentMonitor, currentInitError);
-    return Results.Ok(new TelemetryResponse
+    catch (Exception)
     {
-        Ts = DateTimeOffset.Now,
-        Cpu = cpu,
-    });
-});
+        break;
+    }
 
-try
-{
-    Log($"listening on http://127.0.0.1:{port}");
-    app.Run();
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            var path = ctx.Request.Url?.AbsolutePath ?? "/";
+            if (path.Equals("/health", StringComparison.OrdinalIgnoreCase))
+            {
+                await WriteJsonAsync(ctx.Response, 200, new HealthResponse { Ok = true, Version = version });
+                return;
+            }
+
+            if (path.Equals("/v1/telemetry", StringComparison.OrdinalIgnoreCase))
+            {
+                Computer? currentMonitor;
+                string? currentInitError;
+                lock (monitorSync)
+                {
+                    currentMonitor = monitor;
+                    currentInitError = sensorInitError;
+                }
+
+                var body = new TelemetryResponse
+                {
+                    Ts = DateTimeOffset.Now,
+                    Cpu = ReadCpuTelemetry(currentMonitor, currentInitError),
+                };
+                await WriteJsonAsync(ctx.Response, 200, body);
+                return;
+            }
+
+            await WriteJsonAsync(ctx.Response, 404, new { error = "not found" });
+        }
+        catch (Exception ex)
+        {
+            Log($"request handler failed: {ex.GetType().Name}: {ex.Message}");
+            try
+            {
+                await WriteJsonAsync(ctx.Response, 500, new { error = "internal error" });
+            }
+            catch
+            {
+            }
+        }
+    });
 }
-catch (IOException ex) when (ex.Message.Contains("address", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("in use", StringComparison.OrdinalIgnoreCase))
+
+static async Task WriteJsonAsync(HttpListenerResponse response, int statusCode, object payload)
 {
-    Log("port in use");
-}
-catch (Exception ex)
-{
-    Log($"helper fatal error: {ex.GetType().Name}: {ex.Message}");
+    var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+    var bytes = Encoding.UTF8.GetBytes(json);
+    response.StatusCode = statusCode;
+    response.ContentType = "application/json; charset=utf-8";
+    response.ContentLength64 = bytes.Length;
+    await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
+    response.OutputStream.Close();
 }
 
 static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
@@ -193,7 +217,7 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
             Error = picked?.Value is null ? "temperature unavailable" : null,
         };
     }
-    catch (Exception)
+    catch
     {
         return new CpuTelemetry
         {
