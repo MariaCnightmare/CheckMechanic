@@ -59,6 +59,18 @@ public partial class MainWindow : Window
     public string TempChartData { get; set; } = string.Empty;
     public string CpuChartData { get; set; } = string.Empty;
     public string MemChartData { get; set; } = string.Empty;
+    public ObservableCollection<ChartTick> TempChartTicks { get; } = new();
+    public ObservableCollection<ChartTick> CpuChartTicks { get; } = new();
+    public ObservableCollection<ChartTick> MemChartTicks { get; } = new();
+    public double TempLatestPointX { get; set; }
+    public double TempLatestPointY { get; set; }
+    public double CpuLatestPointX { get; set; }
+    public double CpuLatestPointY { get; set; }
+    public double MemLatestPointX { get; set; }
+    public double MemLatestPointY { get; set; }
+    public Visibility TempLatestPointVisibility { get; set; } = Visibility.Collapsed;
+    public Visibility CpuLatestPointVisibility { get; set; } = Visibility.Collapsed;
+    public Visibility MemLatestPointVisibility { get; set; } = Visibility.Collapsed;
     public string TempRingArcData { get; set; } = string.Empty;
     public string TempRingCenterText { get; set; } = "--";
     public string TempLatestText { get; set; } = "--";
@@ -469,16 +481,101 @@ public partial class MainWindow : Window
 
     private void RefreshChartData()
     {
-        TempChartData = BuildSparklinePath(_tempHistory, 780, 190, 30, 100);
-        CpuChartData = BuildSparklinePath(_cpuHistory, 780, 190, 0, 100);
-        MemChartData = BuildSparklinePath(_memHistory, 780, 190, 0, 100);
+        const double plotWidth = 720;
+        const double plotHeight = 180;
+        const int ticks = 5;
 
         var tempValues = _tempHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        var tempMinRaw = tempValues.Count > 0 ? tempValues.Min() : 30;
+        var tempMaxRaw = tempValues.Count > 0 ? tempValues.Max() : 100;
+        var tempMin = Math.Floor((tempMinRaw - 2) * 10) / 10.0;
+        var tempMax = Math.Ceiling((tempMaxRaw + 2) * 10) / 10.0;
+        if (tempMax - tempMin < 8)
+        {
+            tempMax = tempMin + 8;
+        }
+
+        TempChartData = BuildSparklinePath(_tempHistory, plotWidth, plotHeight, tempMin, tempMax);
+        UpdateTicks(TempChartTicks, ticks, tempMin, tempMax, plotHeight, "°C", 1);
+        UpdateLatestPoint(_tempHistory, plotWidth, plotHeight, tempMin, tempMax, out var tx, out var ty, out var tv);
+        TempLatestPointX = tx;
+        TempLatestPointY = ty;
+        TempLatestPointVisibility = tv;
+
         TempMin60Text = tempValues.Count > 0 ? $"{tempValues.Min():F1}°C" : "--";
         TempMax60Text = tempValues.Count > 0 ? $"{tempValues.Max():F1}°C" : "--";
 
+        TempLatestText = _tempHistory.LastOrDefault(x => x.HasValue) is double lastTemp ? $"{lastTemp:F1}°C" : "N/A";
+
+        CpuChartData = BuildSparklinePath(_cpuHistory, plotWidth, plotHeight, 0, 100);
+        UpdateTicks(CpuChartTicks, ticks, 0, 100, plotHeight, "%", 0);
+        UpdateLatestPoint(_cpuHistory, plotWidth, plotHeight, 0, 100, out var cx, out var cy, out var cv);
+        CpuLatestPointX = cx;
+        CpuLatestPointY = cy;
+        CpuLatestPointVisibility = cv;
+
+        MemChartData = BuildSparklinePath(_memHistory, plotWidth, plotHeight, 0, 100);
+        UpdateTicks(MemChartTicks, ticks, 0, 100, plotHeight, "%", 0);
+        UpdateLatestPoint(_memHistory, plotWidth, plotHeight, 0, 100, out var mx, out var my, out var mv);
+        MemLatestPointX = mx;
+        MemLatestPointY = my;
+        MemLatestPointVisibility = mv;
+
         var cpuValues = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
         CpuAvg60Text = cpuValues.Count > 0 ? $"{cpuValues.Average():F1}%" : "--";
+        CpuLatestText = _cpuHistory.LastOrDefault(x => x.HasValue) is double lastCpu ? $"{lastCpu:F1}%" : "N/A";
+        MemLatestText = _memHistory.LastOrDefault(x => x.HasValue) is double lastMem ? $"{lastMem:F1}%" : "N/A";
+    }
+
+    private static void UpdateTicks(ObservableCollection<ChartTick> target, int ticks, double min, double max, double plotHeight, string unit, int decimals)
+    {
+        target.Clear();
+        for (var i = 0; i < ticks; i++)
+        {
+            var ratio = (double)i / (ticks - 1);
+            var value = max - ((max - min) * ratio);
+            var y = ratio * plotHeight;
+            var label = decimals > 0 ? $"{value:F1}{unit}" : $"{value:F0}{unit}";
+            target.Add(new ChartTick { Y = y - 8, Label = label });
+        }
+    }
+
+    private static void UpdateLatestPoint(
+        IEnumerable<double?> values,
+        double width,
+        double height,
+        double min,
+        double max,
+        out double x,
+        out double y,
+        out Visibility visibility)
+    {
+        var list = values.ToList();
+        var index = -1;
+        double? value = null;
+        for (var i = list.Count - 1; i >= 0; i--)
+        {
+            if (list[i].HasValue)
+            {
+                index = i;
+                value = list[i];
+                break;
+            }
+        }
+
+        if (index < 0 || !value.HasValue || list.Count < 2 || max <= min)
+        {
+            x = 0;
+            y = 0;
+            visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var stepX = width / Math.Max(list.Count - 1, 1);
+        x = Math.Max(0, Math.Min(width - 7, index * stepX - 3.5));
+        var normalized = Math.Clamp((value.Value - min) / (max - min), 0, 1);
+        y = Math.Max(0, Math.Min(height - 7, (height - (normalized * height)) - 3.5));
+        visibility = Visibility.Visible;
     }
 
     private static string BuildSparklinePath(IEnumerable<double?> values, double width, double height, double minY, double maxY)
@@ -585,6 +682,12 @@ public partial class MainWindow : Window
         var provider = payload.Cpu.ProviderUsed ?? "none";
         var errors = payload.Cpu.ProviderErrors?.Count ?? 0;
         return $"errors:{errors} / provider:{provider} / updated:{DateTime.Now:HH:mm:ss}";
+    }
+
+    public sealed class ChartTick
+    {
+        public double Y { get; set; }
+        public string Label { get; set; } = string.Empty;
     }
 
     private static string GetHistoryFilePath()
