@@ -22,20 +22,29 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 var app = builder.Build();
-var monitor = new Computer
+Computer? monitor = null;
+string? sensorInitError = null;
+try
 {
-    IsCpuEnabled = true,
-    IsMotherboardEnabled = false,
-    IsGpuEnabled = false,
-    IsMemoryEnabled = false,
-    IsStorageEnabled = false,
-    IsNetworkEnabled = false,
-};
-monitor.Open();
+    monitor = new Computer
+    {
+        IsCpuEnabled = true,
+        IsMotherboardEnabled = false,
+        IsGpuEnabled = false,
+        IsMemoryEnabled = false,
+        IsStorageEnabled = false,
+        IsNetworkEnabled = false,
+    };
+    monitor.Open();
+}
+catch (Exception)
+{
+    sensorInitError = "sensor backend init failed";
+}
 
 app.Lifetime.ApplicationStopping.Register(() =>
 {
-    monitor.Close();
+    monitor?.Close();
 });
 
 app.MapGet("/health", () => Results.Ok(new HealthResponse
@@ -46,7 +55,7 @@ app.MapGet("/health", () => Results.Ok(new HealthResponse
 
 app.MapGet("/v1/telemetry", () =>
 {
-    var cpu = ReadCpuTelemetry(monitor);
+    var cpu = ReadCpuTelemetry(monitor, sensorInitError);
     return Results.Ok(new TelemetryResponse
     {
         Ts = DateTimeOffset.Now,
@@ -56,15 +65,30 @@ app.MapGet("/v1/telemetry", () =>
 
 try
 {
+    Console.WriteLine($"CheckMechanic.SensorHelper listening on http://127.0.0.1:{port}");
     app.Run();
 }
 catch (IOException ex) when (ex.Message.Contains("address", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("in use", StringComparison.OrdinalIgnoreCase))
 {
     Console.Error.WriteLine("port in use");
 }
-
-static CpuTelemetry ReadCpuTelemetry(Computer monitor)
+catch (Exception ex)
 {
+    Console.Error.WriteLine($"helper fatal error: {ex.GetType().Name}");
+}
+
+static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
+{
+    if (monitor is null)
+    {
+        return new CpuTelemetry
+        {
+            TempC = null,
+            Label = null,
+            Error = sensorInitError ?? "sensor backend unavailable",
+        };
+    }
+
     try
     {
         IHardware? cpuHardware = monitor.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
