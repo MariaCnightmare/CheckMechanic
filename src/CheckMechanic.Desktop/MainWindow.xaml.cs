@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Threading;
 using CheckMechanic.Shared;
 using FlaUI.Core;
+using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.UIA3;
