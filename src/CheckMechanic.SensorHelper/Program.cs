@@ -21,42 +21,15 @@ void Log(string message)
 }
 
 Log("sensor helper starting");
-Mutex? instanceMutex = null;
-var ownsMutex = false;
-try
-{
-    // Best-effort singleton guard. Some environments can hang on named mutex APIs.
-    var mutexTask = Task.Run(() =>
-    {
-        var m = new Mutex(false, "CheckMechanic.SensorHelper.Singleton", out _);
-        var owned = m.WaitOne(0);
-        return (Mutex: m, Owned: owned, TimedOut: false);
-    });
-    if (!mutexTask.Wait(TimeSpan.FromMilliseconds(600)))
-    {
-        Log("mutex init timeout, continue without mutex guard");
-    }
-    else
-    {
-        instanceMutex = mutexTask.Result.Mutex;
-        ownsMutex = mutexTask.Result.Owned;
-        if (!ownsMutex)
-        {
-            Log("sensor helper already running (mutex locked)");
-            instanceMutex.Dispose();
-            return;
-        }
-    }
-}
-catch (Exception ex)
-{
-    Log($"mutex init failed, continue without mutex guard: {ex.GetType().Name}: {ex.Message}");
-}
+// NOTE: mutex singleton guard is intentionally disabled in this build.
+// Some environments showed startup hangs around named mutex APIs.
+Log("mutex guard disabled");
 
 WebApplicationBuilder builder;
 try
 {
     builder = WebApplication.CreateSlimBuilder(args);
+    Log("web builder created");
 }
 catch (Exception ex)
 {
@@ -76,6 +49,7 @@ WebApplication app;
 try
 {
     app = builder.Build();
+    Log("web app built");
 }
 catch (Exception ex)
 {
@@ -124,18 +98,6 @@ app.Lifetime.ApplicationStopping.Register(() =>
     {
         monitor?.Close();
     }
-    if (ownsMutex)
-    {
-        try
-        {
-            instanceMutex?.ReleaseMutex();
-        }
-        catch
-        {
-            // ignore
-        }
-    }
-    instanceMutex?.Dispose();
 });
 
 app.MapGet("/health", () => Results.Ok(new HealthResponse
