@@ -42,6 +42,14 @@ _ = Task.Run(() =>
             IsNetworkEnabled = false,
         };
         m.Open();
+        for (var i = 0; i < 3; i++)
+        {
+            foreach (var hw in m.Hardware)
+            {
+                hw.Update();
+            }
+            Thread.Sleep(200);
+        }
         lock (monitorSync)
         {
             monitor = m;
@@ -145,21 +153,21 @@ while (listener.IsListening)
 
                 if (currentMonitor is null)
                 {
-                    await WriteJsonAsync(ctx.Response, 200, new { sensors = Array.Empty<object>() });
+                    await WriteJsonAsync(ctx.Response, 200, new { cpu_temperature_candidates = Array.Empty<object>() });
                     return;
                 }
 
                 var sensors = CollectTemperatureSensors(currentMonitor)
+                    .Where(s => IsCpuLike(s.HardwarePath, s.SensorName))
                     .Select(s => new
                     {
-                        hardware = s.HardwareName,
-                        sensor = s.SensorName,
+                        name = s.SensorName,
+                        type = ClassifyCpuCandidateType(s.SensorName),
                         value = s.Value,
-                        min = s.Min,
-                        max = s.Max,
+                        hardware_path = s.HardwarePath,
                     })
                     .ToList();
-                await WriteJsonAsync(ctx.Response, 200, new { sensors });
+                await WriteJsonAsync(ctx.Response, 200, new { cpu_temperature_candidates = sensors });
                 return;
             }
 
@@ -211,6 +219,7 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 
     var util = ReadCpuUtilization(monitor);
     var providerErrors = new List<string>();
+    const string providerLhm = "lhm";
 
     if (monitor is not null)
     {
@@ -220,13 +229,13 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
             if (sensors.Count > 0)
             {
                 var valued = sensors.Where(s => EffectiveTemp(s) is not null).ToList();
-                var valuedCpuLike = valued.FirstOrDefault(s => IsCpuLike(s.HardwareName, s.SensorName));
-                var valuedPackage = valued.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
-                var anyValued = valued.FirstOrDefault();
-                var anyCpuLike = sensors.FirstOrDefault(s => IsCpuLike(s.HardwareName, s.SensorName));
-                var anyPackage = sensors.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
-                var anySensor = sensors.FirstOrDefault();
-                var picked = valuedCpuLike ?? valuedPackage ?? anyValued ?? anyCpuLike ?? anyPackage ?? anySensor;
+                var valuedPackage = valued.FirstOrDefault(s => ClassifyCpuCandidateType(s.SensorName) == "package");
+                var valuedCoreMax = valued.FirstOrDefault(s => ClassifyCpuCandidateType(s.SensorName) == "core_max");
+                var valuedCoreAverage = valued.FirstOrDefault(s => ClassifyCpuCandidateType(s.SensorName) == "core_average");
+                var valuedCpuLike = valued.FirstOrDefault(s => IsCpuLike(s.HardwarePath, s.SensorName));
+                var anyCpuLike = sensors.FirstOrDefault(s => IsCpuLike(s.HardwarePath, s.SensorName));
+
+                var picked = valuedPackage ?? valuedCoreMax ?? valuedCoreAverage ?? valuedCpuLike ?? anyCpuLike;
                 var temp = picked is null ? null : EffectiveTemp(picked);
                 if (temp is not null)
                 {
@@ -234,31 +243,31 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
                     {
                         TempC = temp,
                         UtilPercent = util,
-                        Label = picked is null ? null : $"{picked.HardwareName} / {picked.SensorName}",
+                        Label = picked is null ? null : $"{picked.HardwarePath} / {picked.SensorName}",
                         Source = "LibreHardwareMonitorLib",
-                        ProviderUsed = "lhm",
+                        ProviderUsed = providerLhm,
                         Error = null,
                         ErrorCode = null,
                         ProviderErrors = providerErrors,
                     };
                 }
-                providerErrors.Add("lhm:sensor_values_unavailable");
+                providerErrors.Add("lhm:TEMP_SENSOR_VALUES_UNAVAILABLE");
             }
             else
             {
-                providerErrors.Add("lhm:temperature_sensor_not_found");
+                providerErrors.Add("lhm:TEMP_SENSOR_NOT_FOUND");
             }
         }
         catch
         {
-            providerErrors.Add("lhm:sensor_read_failed");
+            providerErrors.Add("lhm:TEMP_SENSOR_READ_FAILED");
         }
     }
     else
     {
         var initCode = sensorInitError == "sensor backend initializing"
-            ? "sensor_backend_initializing"
-            : "sensor_backend_init_failed";
+            ? "TEMP_BACKEND_INITIALIZING"
+            : "TEMP_BACKEND_INIT_FAILED";
         providerErrors.Add($"lhm:{initCode}");
     }
 
@@ -289,16 +298,34 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
         Source = "unavailable",
         ProviderUsed = null,
         Error = "temperature unavailable",
-        ErrorCode = "sensor_values_unavailable",
+        ErrorCode = "TEMP_SENSOR_VALUES_UNAVAILABLE",
         ProviderErrors = providerErrors,
     };
 }
 
-static bool IsCpuLike(string hardwareName, string sensorName)
+static bool IsCpuLike(string hardwarePath, string sensorName)
 {
-    var h = hardwareName.ToLowerInvariant();
+    var h = hardwarePath.ToLowerInvariant();
     var s = sensorName.ToLowerInvariant();
     return h.Contains("cpu") || s.Contains("cpu") || s.Contains("package") || s.Contains("tctl") || s.Contains("tdie");
+}
+
+static string ClassifyCpuCandidateType(string sensorName)
+{
+    var name = sensorName.ToLowerInvariant();
+    if (name.Contains("package"))
+    {
+        return "package";
+    }
+    if (name.Contains("core max") || name.Contains("coremax"))
+    {
+        return "core_max";
+    }
+    if (name.Contains("core average") || name.Contains("core avg") || name.Contains("average"))
+    {
+        return "core_average";
+    }
+    return "other";
 }
 
 static List<TempSensorSnapshot> CollectTemperatureSensors(Computer monitor)
@@ -306,21 +333,21 @@ static List<TempSensorSnapshot> CollectTemperatureSensors(Computer monitor)
     var sensors = new List<TempSensorSnapshot>();
     foreach (var hw in monitor.Hardware)
     {
-        WalkHardware(hw, sensors);
+        WalkHardware(hw, hw.Name, sensors);
     }
     return sensors;
 }
 
-static void WalkHardware(IHardware hw, List<TempSensorSnapshot> sensors)
+static void WalkHardware(IHardware hw, string path, List<TempSensorSnapshot> sensors)
 {
     hw.Update();
     foreach (var s in hw.Sensors.Where(x => x.SensorType == SensorType.Temperature))
     {
-        sensors.Add(new TempSensorSnapshot(hw.Name, s.Name, s.Value, s.Min, s.Max));
+        sensors.Add(new TempSensorSnapshot(path, s.Name, s.Value, s.Min, s.Max));
     }
     foreach (var sub in hw.SubHardware)
     {
-        WalkHardware(sub, sensors);
+        WalkHardware(sub, $"{path} > {sub.Name}", sensors);
     }
 }
 
@@ -400,16 +427,16 @@ static bool TryReadWmiTemperature(out double? tempC, out string? label, out stri
 
         tempC = null;
         label = null;
-        errorCode = "thermal_zone_not_found";
+        errorCode = "TEMP_WMI_THERMAL_ZONE_NOT_FOUND";
         return false;
     }
     catch
     {
         tempC = null;
         label = null;
-        errorCode = "wmi_query_failed";
+        errorCode = "TEMP_WMI_QUERY_FAILED";
         return false;
     }
 }
 
-record TempSensorSnapshot(string HardwareName, string SensorName, float? Value, float? Min, float? Max);
+record TempSensorSnapshot(string HardwarePath, string SensorName, float? Value, float? Min, float? Max);

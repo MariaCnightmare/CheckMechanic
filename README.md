@@ -44,11 +44,24 @@ streamlit run app.py
 - `src/CheckMechanic.SensorHelper`:
   - LibreHardwareMonitorLib を使って CPU 温度を取得
   - 温度未取得時は WMI (ACPI Thermal Zone) へフォールバック
-  - `127.0.0.1:17805` で `/health`, `/v1/telemetry` を提供
+  - `127.0.0.1:17805` で `/health`, `/v1/telemetry`, `/v1/sensors` を提供
 - `src/CheckMechanic.Desktop`:
   - SensorHelper のヘルスチェックと自動起動
   - 温度表示・CPU使用率表示・ステータス表示・再接続/再起動ボタン・簡易ログ
-  - 温度値が取得できない環境では、環境制約の可能性を明示して継続動作
+  - 温度値が取得できない環境では「必須要件未達」を表示し、制限モードへ移行
+
+### 対応PCの定義（temperature-required）
+- `v1/telemetry` で `cpu.temp_c` が継続的に取得できること
+- 取得経路は `LibreHardwareMonitorLib` を優先し、必要に応じて WMI をフォールバック
+- `cpu.temp_c` が `null` の場合は非対応扱い（`error_code` を返却）
+
+### 管理者権限について
+- 一部環境ではセンサー取得に管理者権限が必要です
+- Desktop の「管理者でSensorHelperを再起動して再試行」ボタンで昇格再試行できます
+- 昇格後も `temp_c` が取得できない場合は、非対応扱いとして制限モードを維持します
+
+### 非対応時の案内文言（統一）
+- `必須要件未達: 温度取得が必要です。管理者で再試行してください。`
 
 ### Build / Run（Windows, .NET 8）
 ```bash
