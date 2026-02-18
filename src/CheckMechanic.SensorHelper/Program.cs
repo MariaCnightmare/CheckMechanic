@@ -22,13 +22,24 @@ void Log(string message)
 
 Log("sensor helper starting");
 Mutex? instanceMutex = null;
+var ownsMutex = false;
 try
 {
-    // Use a local mutex name to avoid Global namespace permission issues on some environments.
-    instanceMutex = new Mutex(true, "CheckMechanic.SensorHelper.Singleton", out var createdNew);
-    if (!createdNew)
+    // Non-blocking singleton check to avoid hanging when another process holds the mutex.
+    instanceMutex = new Mutex(false, "CheckMechanic.SensorHelper.Singleton", out var createdNew);
+    if (createdNew)
     {
-        Log("sensor helper already running");
+        ownsMutex = instanceMutex.WaitOne(0);
+    }
+    else
+    {
+        ownsMutex = instanceMutex.WaitOne(0);
+    }
+
+    if (!ownsMutex)
+    {
+        Log("sensor helper already running (mutex locked)");
+        instanceMutex.Dispose();
         return;
     }
 }
@@ -108,6 +119,17 @@ app.Lifetime.ApplicationStopping.Register(() =>
     lock (monitorSync)
     {
         monitor?.Close();
+    }
+    if (ownsMutex)
+    {
+        try
+        {
+            instanceMutex?.ReleaseMutex();
+        }
+        catch
+        {
+            // ignore
+        }
     }
     instanceMutex?.Dispose();
 });
