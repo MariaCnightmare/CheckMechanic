@@ -43,6 +43,7 @@ streamlit run app.py
 
 - `src/CheckMechanic.SensorHelper`:
   - LibreHardwareMonitorLib を使って CPU 温度を取得
+  - 温度未取得時は WMI (ACPI Thermal Zone) へフォールバック
   - `127.0.0.1:17805` で `/health`, `/v1/telemetry` を提供
 - `src/CheckMechanic.Desktop`:
   - SensorHelper のヘルスチェックと自動起動

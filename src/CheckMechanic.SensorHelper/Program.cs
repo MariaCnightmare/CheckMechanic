@@ -1,4 +1,5 @@
 using System.Net;
+using System.Management;
 using System.Text;
 using System.Text.Json;
 using CheckMechanic.Shared;
@@ -208,68 +209,89 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
         return null;
     }
 
-    if (monitor is null)
+    var util = ReadCpuUtilization(monitor);
+    var providerErrors = new List<string>();
+
+    if (monitor is not null)
+    {
+        try
+        {
+            var sensors = CollectTemperatureSensors(monitor);
+            if (sensors.Count > 0)
+            {
+                var valued = sensors.Where(s => EffectiveTemp(s) is not null).ToList();
+                var valuedCpuLike = valued.FirstOrDefault(s => IsCpuLike(s.HardwareName, s.SensorName));
+                var valuedPackage = valued.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
+                var anyValued = valued.FirstOrDefault();
+                var anyCpuLike = sensors.FirstOrDefault(s => IsCpuLike(s.HardwareName, s.SensorName));
+                var anyPackage = sensors.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
+                var anySensor = sensors.FirstOrDefault();
+                var picked = valuedCpuLike ?? valuedPackage ?? anyValued ?? anyCpuLike ?? anyPackage ?? anySensor;
+                var temp = picked is null ? null : EffectiveTemp(picked);
+                if (temp is not null)
+                {
+                    return new CpuTelemetry
+                    {
+                        TempC = temp,
+                        UtilPercent = util,
+                        Label = picked is null ? null : $"{picked.HardwareName} / {picked.SensorName}",
+                        Source = "LibreHardwareMonitorLib",
+                        ProviderUsed = "lhm",
+                        Error = null,
+                        ErrorCode = null,
+                        ProviderErrors = providerErrors,
+                    };
+                }
+                providerErrors.Add("lhm:sensor_values_unavailable");
+            }
+            else
+            {
+                providerErrors.Add("lhm:temperature_sensor_not_found");
+            }
+        }
+        catch
+        {
+            providerErrors.Add("lhm:sensor_read_failed");
+        }
+    }
+    else
     {
         var initCode = sensorInitError == "sensor backend initializing"
             ? "sensor_backend_initializing"
             : "sensor_backend_init_failed";
-        return new CpuTelemetry
-        {
-            TempC = null,
-            UtilPercent = null,
-            Label = null,
-            Error = sensorInitError ?? "sensor backend unavailable",
-            ErrorCode = initCode,
-        };
+        providerErrors.Add($"lhm:{initCode}");
     }
 
-    try
+    if (TryReadWmiTemperature(out var wmiTemp, out var wmiLabel, out var wmiErrorCode))
     {
-        var sensors = CollectTemperatureSensors(monitor);
-        if (sensors.Count == 0)
-        {
-            return new CpuTelemetry
-            {
-                TempC = null,
-                UtilPercent = null,
-                Label = null,
-                Error = "temperature sensor not found",
-                ErrorCode = "temperature_sensor_not_found",
-            };
-        }
-
-        var valued = sensors.Where(s => EffectiveTemp(s) is not null).ToList();
-        var valuedCpuLike = valued.FirstOrDefault(s => IsCpuLike(s.HardwareName, s.SensorName));
-        var valuedPackage = valued.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
-        var anyValued = valued.FirstOrDefault();
-
-        var anyCpuLike = sensors.FirstOrDefault(s => IsCpuLike(s.HardwareName, s.SensorName));
-        var anyPackage = sensors.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
-        var anySensor = sensors.FirstOrDefault();
-        var picked = valuedCpuLike ?? valuedPackage ?? anyValued ?? anyCpuLike ?? anyPackage ?? anySensor;
-        var temp = picked is null ? null : EffectiveTemp(picked);
-        var util = ReadCpuUtilization(monitor);
-
         return new CpuTelemetry
         {
-            TempC = temp,
+            TempC = wmiTemp,
             UtilPercent = util,
-            Label = picked is null ? null : $"{picked.HardwareName} / {picked.SensorName}",
-            Error = picked is null || temp is null ? "temperature unavailable" : null,
-            ErrorCode = picked is null || temp is null ? "sensor_values_unavailable" : null,
+            Label = wmiLabel,
+            Source = "WMI",
+            ProviderUsed = "wmi_acpi",
+            Error = null,
+            ErrorCode = null,
+            ProviderErrors = providerErrors,
         };
     }
-    catch
+    if (!string.IsNullOrWhiteSpace(wmiErrorCode))
     {
-        return new CpuTelemetry
-        {
-            TempC = null,
-            UtilPercent = ReadCpuUtilization(monitor),
-            Label = null,
-            Error = "failed to read cpu temperature",
-            ErrorCode = "sensor_read_failed",
-        };
+        providerErrors.Add($"wmi:{wmiErrorCode}");
     }
+
+    return new CpuTelemetry
+    {
+        TempC = null,
+        UtilPercent = util,
+        Label = null,
+        Source = "unavailable",
+        ProviderUsed = null,
+        Error = "temperature unavailable",
+        ErrorCode = "sensor_values_unavailable",
+        ProviderErrors = providerErrors,
+    };
 }
 
 static bool IsCpuLike(string hardwareName, string sensorName)
@@ -341,6 +363,52 @@ static double? ReadCpuUtilization(Computer? monitor)
     catch
     {
         return null;
+    }
+}
+
+static bool TryReadWmiTemperature(out double? tempC, out string? label, out string? errorCode)
+{
+    try
+    {
+        using var searcher = new ManagementObjectSearcher(
+            @"root\WMI",
+            "SELECT CurrentTemperature, InstanceName FROM MSAcpi_ThermalZoneTemperature");
+        var results = searcher.Get();
+        foreach (var obj in results.Cast<ManagementObject>())
+        {
+            var raw = obj["CurrentTemperature"];
+            if (raw is null)
+            {
+                continue;
+            }
+
+            var kelvinX10 = Convert.ToDouble(raw);
+            if (kelvinX10 <= 0)
+            {
+                continue;
+            }
+
+            var celsius = (kelvinX10 / 10.0) - 273.15;
+            if (celsius is > -40 and < 150)
+            {
+                tempC = celsius;
+                label = obj["InstanceName"]?.ToString() ?? "WMI Thermal Zone";
+                errorCode = null;
+                return true;
+            }
+        }
+
+        tempC = null;
+        label = null;
+        errorCode = "thermal_zone_not_found";
+        return false;
+    }
+    catch
+    {
+        tempC = null;
+        label = null;
+        errorCode = "wmi_query_failed";
+        return false;
     }
 }
 

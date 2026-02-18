@@ -24,6 +24,12 @@ public sealed class CpuTelemetry
 
     [JsonPropertyName("error_code")]
     public string? ErrorCode { get; set; }
+
+    [JsonPropertyName("provider_used")]
+    public string? ProviderUsed { get; set; }
+
+    [JsonPropertyName("provider_errors")]
+    public List<string> ProviderErrors { get; set; } = new();
 }
 
 public sealed class TelemetryResponse
