@@ -42,13 +42,21 @@ streamlit run app.py
 `src/` 以下に .NET 8 の新規実装を追加しています。
 
 - `src/CheckMechanic.SensorHelper`:
-  - LibreHardwareMonitorLib を使って CPU 温度を取得
-  - 温度未取得時は WMI (ACPI Thermal Zone) へフォールバック
-  - `127.0.0.1:17805` で `/health`, `/v1/telemetry`, `/v1/sensors` を提供
+  - Core Temp Shared Memory を必須経路として CPU 温度を取得
+  - 温度未取得時は LHM/WMI を診断情報として併記
+  - `127.0.0.1:17805` で `/health`, `/v1/telemetry`, `/v1/profile`, `/v1/sensors` を提供
+  - `v1/telemetry` は `cpu/memory/disk/net/gpu` を返却（null許容）
 - `src/CheckMechanic.Desktop`:
   - SensorHelper のヘルスチェックと自動起動
-  - 温度表示・CPU使用率表示・ステータス表示・再接続/再起動ボタン・簡易ログ
+  - Overview / Charts / System Profile / Diagnostics の4セクション表示
+  - 温度・CPU・メモリ・ディスク・ネット・PerfScore を表示
+  - Opt-in ON 時のみランキング用カテゴリJSONをローカル生成（送信は未実装）
   - 温度値が取得できない環境では「必須要件未達」を表示し、制限モードへ移行
+
+### ランキング用カテゴリ生成（ローカル）
+- Opt-in が ON のときのみ `RankingProfileDto` を生成
+- 生成項目はカテゴリ化済み（`os_major`, `cpu_family`, `cpu_cores`, `ram_gb_bucket`, `gpu_family`, `storage_type`, `device_class`, `temp_provider`）
+- 禁止項目（hostname/username/mac/ssid/bssid/serial/uuid/smbios 等）は送信用JSONに含めない
 
 ### 対応PCの定義（temperature-required）
 - `v1/telemetry` で `cpu.temp_c` が継続的に取得できること
@@ -75,4 +83,17 @@ streamlit run app.py
 dotnet build CheckMechanic.sln
 dotnet run --project src/CheckMechanic.SensorHelper/CheckMechanic.SensorHelper.csproj
 dotnet run --project src/CheckMechanic.Desktop/CheckMechanic.Desktop.csproj
+```
+
+### API quick check
+```powershell
+irm http://127.0.0.1:17805/health
+irm http://127.0.0.1:17805/v1/telemetry
+irm http://127.0.0.1:17805/v1/profile
+irm http://127.0.0.1:17805/v1/sensors
+```
+
+### テスト
+```bash
+dotnet test tests/CheckMechanic.Shared.Tests/CheckMechanic.Shared.Tests.csproj
 ```

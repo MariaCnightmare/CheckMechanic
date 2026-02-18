@@ -9,6 +9,10 @@
   - Usage: WMI fallback diagnostics for temperature telemetry
   - License: MIT (as part of .NET Foundation package ecosystem)
   - URL: https://www.nuget.org/packages/System.Management
+- System.Diagnostics.PerformanceCounter
+  - Usage: Disk/GPU performance telemetry sampling
+  - License: MIT (as part of .NET Foundation package ecosystem)
+  - URL: https://www.nuget.org/packages/System.Diagnostics.PerformanceCounter
 - Velopack (tooling/runtime for update distribution)
   - Usage: S3/CloudFront release feed based self-update workflow
   - License: MIT

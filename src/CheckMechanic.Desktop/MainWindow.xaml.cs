@@ -1,9 +1,9 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Net.Sockets;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
@@ -16,33 +16,56 @@ namespace CheckMechanic.Desktop;
 public partial class MainWindow : Window
 {
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(1.5) };
     private readonly DispatcherTimer _timer;
+    private readonly Queue<double?> _tempHistory = new();
+    private readonly Queue<double?> _cpuHistory = new();
+    private readonly Queue<double?> _memHistory = new();
+
     private string _lastTelemetryJson = "{}";
-    private bool _isRestrictedMode = true;
+    private string _lastProfileJson = "{}";
+    private int _pollCount;
+    private bool _optInConsent;
 
     public string CpuTemperatureText { get; set; } = "未取得";
     public string CpuUtilizationText { get; set; } = "CPU使用率: 未取得";
+    public string MemoryText { get; set; } = "未取得";
+    public string DiskText { get; set; } = "未取得";
+    public string NetText { get; set; } = "未取得";
+    public string PerfScoreText { get; set; } = "-- (N/A)";
     public string StatusText { get; set; } = "⚠ 起動中";
     public string RestrictionText { get; set; } = "必須要件未達: 温度取得が必要です。";
     public string SetupInstructionsText { get; set; } = "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
     public string MainFeatureText { get; set; } = "制限モード: 主要機能は利用できません。診断情報を確認してください。";
     public string DiagnosticSensorsText { get; set; } = "(未取得)";
-    public bool CloseCoreTempOnExitConsent { get; set; } = false;
+    public string ProfileText { get; set; } = "(未取得)";
+    public string RankingProfileText { get; set; } = "Opt-in をONにするとカテゴリを生成します。";
+    public string TempChartData { get; set; } = string.Empty;
+    public string CpuChartData { get; set; } = string.Empty;
+    public string MemChartData { get; set; } = string.Empty;
+    public bool CloseCoreTempOnExitConsent { get; set; }
     public ObservableCollection<string> Logs { get; } = new();
+
+    public bool OptInConsent
+    {
+        get => _optInConsent;
+        set
+        {
+            _optInConsent = value;
+            UpdateRankingPreview();
+            RefreshBindings();
+        }
+    }
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = this;
 
-        _timer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(1.5),
-        };
-        _timer.Tick += async (_, _) => await PollTelemetryAsync();
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+        _timer.Tick += async (_, _) => await PollAllAsync();
 
         Loaded += async (_, _) => await InitializeAsync();
         Closing += MainWindow_OnClosing;
@@ -51,9 +74,19 @@ public partial class MainWindow : Window
     private async Task InitializeAsync()
     {
         await EnsureHelperAvailableAsync();
-        await PollTelemetryAsync();
+        await PollAllAsync(forceProfile: true);
         await RefreshDiagnosticsAsync();
         _timer.Start();
+    }
+
+    private async Task PollAllAsync(bool forceProfile = false)
+    {
+        await PollTelemetryAsync();
+        _pollCount++;
+        if (forceProfile || _pollCount % 10 == 0)
+        {
+            await RefreshProfileAsync();
+        }
     }
 
     private async Task EnsureHelperAvailableAsync()
@@ -114,7 +147,7 @@ public partial class MainWindow : Window
             var payload = JsonSerializer.Deserialize<HealthResponse>(json, JsonOptions);
             return payload?.Ok == true;
         }
-        catch (Exception)
+        catch
         {
             return false;
         }
@@ -148,10 +181,14 @@ public partial class MainWindow : Window
                 return;
             }
 
+            CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
+            MemoryText = BuildMemoryText(payload.Memory);
+            DiskText = $"R {FormatRate(payload.Disk.ReadBps)} / W {FormatRate(payload.Disk.WriteBps)}";
+            NetText = $"↓ {FormatRate(payload.Net.RecvBps)} / ↑ {FormatRate(payload.Net.SentBps)}";
+
             if (payload.Cpu.TempC is double temp)
             {
                 CpuTemperatureText = $"{temp:F1} °C";
-                CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
                 SetStatus("✅ OK");
                 SetRestrictedMode(false, string.Empty, string.Empty);
                 AddLog($"temp={temp:F1}C util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider={payload.Cpu.ProviderUsed ?? "unknown"} label={payload.Cpu.Label}");
@@ -159,7 +196,6 @@ public partial class MainWindow : Window
             else
             {
                 CpuTemperatureText = "未取得";
-                CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
                 SetStatus("❌ 必須要件未達（温度取得不可）");
                 SetRestrictedMode(
                     true,
@@ -167,9 +203,11 @@ public partial class MainWindow : Window
                     BuildSetupInstructions(payload.Cpu.ProviderErrors));
                 var providerErrors = payload.Cpu.ProviderErrors?.Count > 0 ? string.Join(",", payload.Cpu.ProviderErrors) : "none";
                 AddLog($"temperature unavailable: code={payload.Cpu.ErrorCode ?? "unknown"} detail={payload.Cpu.Error ?? "unknown"} util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider_errors={providerErrors}");
-                await RefreshDiagnosticsAsync();
             }
 
+            UpdateScore(payload);
+            AppendHistory(payload.Cpu.TempC, payload.Cpu.UtilPercent, payload.Memory.UtilPercent);
+            RefreshChartData();
             RefreshBindings();
         }
         catch (HttpRequestException ex)
@@ -180,7 +218,7 @@ public partial class MainWindow : Window
             AddLog(SanitizeError(ex.Message));
             RefreshBindings();
         }
-        catch (Exception)
+        catch
         {
             CpuTemperatureText = "未取得";
             SetStatus("❌ 取得失敗");
@@ -188,6 +226,187 @@ public partial class MainWindow : Window
             AddLog("telemetry request failed");
             RefreshBindings();
         }
+    }
+
+    private async Task RefreshProfileAsync()
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync($"{HelperBaseUrl}/v1/profile");
+            if (!response.IsSuccessStatusCode)
+            {
+                ProfileText = $"{{\"error\":\"HTTP {(int)response.StatusCode}\"}}";
+                UpdateRankingPreview();
+                return;
+            }
+
+            var raw = await response.Content.ReadAsStringAsync();
+            _lastProfileJson = raw;
+            ProfileText = PrettyJson(raw);
+            UpdateRankingPreview();
+        }
+        catch
+        {
+            ProfileText = "{\"error\":\"profile_unavailable\"}";
+            UpdateRankingPreview();
+        }
+    }
+
+    private void UpdateRankingPreview()
+    {
+        if (!OptInConsent)
+        {
+            RankingProfileText = "Opt-in をONにするとカテゴリを生成します。";
+            return;
+        }
+
+        try
+        {
+            var profile = JsonSerializer.Deserialize<SystemProfileDto>(_lastProfileJson, JsonOptions) ?? new SystemProfileDto();
+            var ranking = RankingProfileBuilder.FromSystemProfile(profile);
+            var json = JsonSerializer.Serialize(ranking, JsonOptions);
+            if (RankingProfileBuilder.ContainsForbiddenKeysJson(json))
+            {
+                RankingProfileText = "{\"error\":\"forbidden_keys_detected\"}";
+                AddLog("ranking profile blocked: forbidden key detected");
+                return;
+            }
+
+            RankingProfileText = json;
+        }
+        catch
+        {
+            RankingProfileText = "{\"error\":\"ranking_profile_generate_failed\"}";
+        }
+    }
+
+    private void UpdateScore(TelemetryResponse payload)
+    {
+        var cpu = NormalizePercent(payload.Cpu.UtilPercent);
+        var mem = NormalizePercent(payload.Memory.UtilPercent);
+        var disk = NormalizeRate(payload.Disk.ReadBps.GetValueOrDefault() + payload.Disk.WriteBps.GetValueOrDefault(), 300 * 1024 * 1024);
+        var net = NormalizeRate(payload.Net.RecvBps.GetValueOrDefault() + payload.Net.SentBps.GetValueOrDefault(), 100 * 1024 * 1024);
+        var tempStress = NormalizeTempStress(payload.Cpu.TempC);
+
+        var score =
+            (cpu * 0.30) +
+            (mem * 0.20) +
+            (disk * 0.20) +
+            (net * 0.10) +
+            (tempStress * 0.20);
+
+        var final = Math.Clamp((int)Math.Round(score * 100), 0, 100);
+        var rank = final >= 90 ? "S" : final >= 75 ? "A" : final >= 55 ? "B" : "C";
+        PerfScoreText = $"{final} ({rank})";
+    }
+
+    private static double NormalizePercent(double? value)
+    {
+        if (!value.HasValue) return 0;
+        return Math.Clamp(value.Value / 100.0, 0, 1);
+    }
+
+    private static double NormalizeRate(double value, double max)
+    {
+        if (max <= 0) return 0;
+        return Math.Clamp(value / max, 0, 1);
+    }
+
+    private static double NormalizeTempStress(double? temp)
+    {
+        if (!temp.HasValue) return 0;
+        if (temp.Value <= 45) return 0.1;
+        if (temp.Value <= 60) return 0.3;
+        if (temp.Value <= 75) return 0.6;
+        if (temp.Value <= 90) return 0.85;
+        return 1.0;
+    }
+
+    private void AppendHistory(double? temp, double? cpu, double? mem)
+    {
+        AppendWithLimit(_tempHistory, temp, 40);
+        AppendWithLimit(_cpuHistory, cpu, 40);
+        AppendWithLimit(_memHistory, mem, 40);
+    }
+
+    private static void AppendWithLimit(Queue<double?> queue, double? value, int max)
+    {
+        queue.Enqueue(value);
+        while (queue.Count > max)
+        {
+            queue.Dequeue();
+        }
+    }
+
+    private void RefreshChartData()
+    {
+        TempChartData = BuildSparklinePath(_tempHistory, 960, 140, 30, 100);
+        CpuChartData = BuildSparklinePath(_cpuHistory, 960, 140, 0, 100);
+        MemChartData = BuildSparklinePath(_memHistory, 960, 140, 0, 100);
+    }
+
+    private static string BuildSparklinePath(IEnumerable<double?> values, double width, double height, double minY, double maxY)
+    {
+        var list = values.ToList();
+        if (list.Count < 2)
+        {
+            return string.Empty;
+        }
+
+        var stepX = width / Math.Max(list.Count - 1, 1);
+        var sb = new System.Text.StringBuilder();
+        var started = false;
+
+        for (var i = 0; i < list.Count; i++)
+        {
+            var v = list[i];
+            if (!v.HasValue)
+            {
+                continue;
+            }
+
+            var x = i * stepX;
+            var normalized = maxY > minY ? Math.Clamp((v.Value - minY) / (maxY - minY), 0, 1) : 0;
+            var y = height - (normalized * height);
+            if (!started)
+            {
+                sb.Append($"M {x:F1},{y:F1} ");
+                started = true;
+            }
+            else
+            {
+                sb.Append($"L {x:F1},{y:F1} ");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildMemoryText(MemoryTelemetry memory)
+    {
+        if (!memory.TotalBytes.HasValue || !memory.UsedBytes.HasValue)
+        {
+            return "未取得";
+        }
+
+        var used = memory.UsedBytes.Value / 1024d / 1024d / 1024d;
+        var total = memory.TotalBytes.Value / 1024d / 1024d / 1024d;
+        var util = memory.UtilPercent.HasValue ? $" ({memory.UtilPercent.Value:F1}%)" : string.Empty;
+        return $"{used:F1} / {total:F1} GB{util}";
+    }
+
+    private static string FormatRate(double? bps)
+    {
+        if (!bps.HasValue)
+        {
+            return "n/a";
+        }
+
+        var value = bps.Value;
+        if (value >= 1024 * 1024 * 1024) return $"{value / 1024 / 1024 / 1024:F2} GB/s";
+        if (value >= 1024 * 1024) return $"{value / 1024 / 1024:F1} MB/s";
+        if (value >= 1024) return $"{value / 1024:F1} KB/s";
+        return $"{value:F0} B/s";
     }
 
     private bool TryStartHelper(bool runAsAdmin = false)
@@ -213,7 +432,7 @@ public partial class MainWindow : Window
             AddLog("admin elevation canceled by user");
             return false;
         }
-        catch (Exception)
+        catch
         {
             AddLog("helper start failed");
             return false;
@@ -290,7 +509,7 @@ public partial class MainWindow : Window
     private async void RecheckButton_OnClick(object sender, RoutedEventArgs e)
     {
         await EnsureHelperAvailableAsync();
-        await PollTelemetryAsync();
+        await PollAllAsync(forceProfile: true);
         await RefreshDiagnosticsAsync();
     }
 
@@ -299,6 +518,7 @@ public partial class MainWindow : Window
         TryKillHelperProcesses();
         await Task.Delay(300);
         await EnsureHelperAvailableAsync();
+        await PollAllAsync(forceProfile: true);
     }
 
     private async void RestartHelperAsAdminButton_OnClick(object sender, RoutedEventArgs e)
@@ -310,14 +530,21 @@ public partial class MainWindow : Window
             RefreshBindings();
             return;
         }
+
         await Task.Delay(1200);
         await EnsureHelperAvailableAsync();
-        await PollTelemetryAsync();
+        await PollAllAsync(forceProfile: true);
     }
 
     private async void RefreshDiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
     {
         await RefreshDiagnosticsAsync();
+        RefreshBindings();
+    }
+
+    private async void RefreshProfileButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        await RefreshProfileAsync();
         RefreshBindings();
     }
 
@@ -342,17 +569,24 @@ public partial class MainWindow : Window
                 restriction = RestrictionText,
                 cpu_temperature_text = CpuTemperatureText,
                 cpu_utilization_text = CpuUtilizationText,
+                memory_text = MemoryText,
+                disk_text = DiskText,
+                net_text = NetText,
+                perf_score_text = PerfScoreText,
                 telemetry_raw = TryParseJsonOrRaw(_lastTelemetryJson),
+                profile_raw = TryParseJsonOrRaw(_lastProfileJson),
+                ranking_profile_preview = TryParseJsonOrRaw(RankingProfileText),
                 sensors_raw = TryParseJsonOrRaw(DiagnosticSensorsText),
                 logs = Logs.ToList(),
             };
-            File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(payload, JsonOptions));
             AddLog($"diagnostics exported: {dialog.FileName}");
         }
         catch
         {
             AddLog("diagnostics export failed");
         }
+
         RefreshBindings();
     }
 
@@ -364,7 +598,6 @@ public partial class MainWindow : Window
 
     private void SetRestrictedMode(bool restricted, string reason, string setupInstructions)
     {
-        _isRestrictedMode = restricted;
         RestrictionText = restricted ? reason : string.Empty;
         SetupInstructionsText = restricted ? setupInstructions : string.Empty;
         MainFeatureText = restricted
@@ -401,7 +634,7 @@ public partial class MainWindow : Window
     {
         var line = $"{DateTime.Now:HH:mm:ss} {message}";
         Logs.Insert(0, line);
-        while (Logs.Count > 50)
+        while (Logs.Count > 120)
         {
             Logs.RemoveAt(Logs.Count - 1);
         }
@@ -413,6 +646,7 @@ public partial class MainWindow : Window
         {
             return "sensor helper connection failed";
         }
+
         return "sensor helper request failed";
     }
 
@@ -426,6 +660,7 @@ public partial class MainWindow : Window
                 DiagnosticSensorsText = $"{{\"error\":\"HTTP {(int)response.StatusCode}\"}}";
                 return;
             }
+
             var raw = await response.Content.ReadAsStringAsync();
             DiagnosticSensorsText = PrettyJson(raw);
         }
@@ -453,7 +688,7 @@ public partial class MainWindow : Window
         try
         {
             using var doc = JsonDocument.Parse(raw);
-            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(doc.RootElement, JsonOptions);
         }
         catch
         {
@@ -484,10 +719,12 @@ public partial class MainWindow : Window
         {
             return "Core Temp が未検出です。Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
         }
+
         if (list.Any(x => x.Contains("coretemp:TEMP_CORETEMP_VALUES_UNAVAILABLE", StringComparison.OrdinalIgnoreCase)))
         {
             return "Core Temp は検出されていますが温度値を取得できません。Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を確認し、管理者で再試行してください。";
         }
+
         return "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」または「管理者でSensorHelperを再起動して再試行」を実行してください。";
     }
 
@@ -513,13 +750,6 @@ public partial class MainWindow : Window
             DataContext = null;
             DataContext = this;
         });
-    }
-
-    private async Task RecheckAfterAutomationAsync()
-    {
-        await EnsureHelperAvailableAsync();
-        await PollTelemetryAsync();
-        await RefreshDiagnosticsAsync();
     }
 
     private Process? LaunchOrActivateCoreTemp()
@@ -553,7 +783,6 @@ public partial class MainWindow : Window
             }
             catch
             {
-                // try next candidate
             }
         }
 
@@ -587,6 +816,7 @@ public partial class MainWindow : Window
                 return p;
             }
         }
+
         return null;
     }
 
@@ -598,15 +828,14 @@ public partial class MainWindow : Window
             {
                 return;
             }
+
             ShowWindow(process.MainWindowHandle, 9);
             SetForegroundWindow(process.MainWindowHandle);
         }
         catch
         {
-            // best effort
         }
     }
-
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -633,8 +862,6 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // best effort shutdown only
         }
     }
-
 }

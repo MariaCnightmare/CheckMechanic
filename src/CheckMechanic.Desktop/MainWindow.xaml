@@ -1,58 +1,171 @@
 <Window x:Class="CheckMechanic.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="CheckMechanic" Height="640" Width="900">
-    <Grid Margin="16">
+        Title="CheckMechanic" Height="760" Width="1120"
+        Background="{DynamicResource BgBrush}">
+    <Grid Margin="14">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock Text="CPU Temperature (Required)" FontSize="18" FontWeight="SemiBold" />
-        <TextBlock Grid.Row="1" Text="{Binding CpuTemperatureText}" FontSize="48" FontWeight="Bold" Margin="0,8,0,0" />
-        <TextBlock Grid.Row="2" Text="{Binding CpuUtilizationText}" FontSize="16" Margin="0,8,0,0" />
-        <TextBlock Grid.Row="3" Text="{Binding RestrictionText}" FontSize="14" FontWeight="SemiBold" Foreground="DarkRed" Margin="0,8,0,0" />
+        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="CheckMechanic Dashboard" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                    <TextBlock Text="{Binding StatusText}" Margin="0,6,0,0" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock Text="{Binding RestrictionText}" Margin="0,6,0,0" Foreground="{DynamicResource DangerBrush}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Core Tempを起動/前面へ" Width="180" Margin="0,0,8,0" Click="LaunchOrActivateCoreTempButton_OnClick" />
+                    <Button Content="再チェック" Width="110" Margin="0,0,8,0" Click="RecheckButton_OnClick" />
+                    <Button Content="管理者で再試行" Width="130" Click="RestartHelperAsAdminButton_OnClick" />
+                </StackPanel>
+            </Grid>
+        </Border>
 
-        <StackPanel Grid.Row="4" Orientation="Vertical" Margin="0,12,0,0">
-            <TextBlock Text="{Binding StatusText}" FontSize="16" />
-            <TextBlock Text="{Binding SetupInstructionsText}" Margin="0,8,0,0" TextWrapping="Wrap" />
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <Button Content="Core Tempを起動/前面へ" Width="190" Margin="0,0,8,0" Click="LaunchOrActivateCoreTempButton_OnClick" />
-                <Button Content="再接続" Width="120" Margin="0,0,8,0" Click="ReconnectButton_OnClick" />
-                <Button Content="再チェック" Width="120" Margin="0,0,8,0" Click="RecheckButton_OnClick" />
-                <Button Content="SensorHelperを再起動" Width="180" Click="RestartHelperButton_OnClick" />
-                <Button Content="管理者でSensorHelperを再起動して再試行" Width="300" Margin="8,0,0,0" Click="RestartHelperAsAdminButton_OnClick" />
-            </StackPanel>
-            <CheckBox Content="終了時に Core Temp も終了する（同意時のみ）" IsChecked="{Binding CloseCoreTempOnExitConsent}" Margin="0,8,0,0" />
-            <TextBlock Text="{Binding MainFeatureText}" Margin="0,8,0,0" />
-        </StackPanel>
+        <TabControl Grid.Row="1" Margin="0,12,0,0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}">
+            <TabItem Header="Overview">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <WrapPanel>
+                            <Border Style="{DynamicResource MetricCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="CPU温度" Style="{DynamicResource MetricTitleStyle}" />
+                                    <TextBlock Text="{Binding CpuTemperatureText}" Style="{DynamicResource MetricValueStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{DynamicResource MetricCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="CPU使用率" Style="{DynamicResource MetricTitleStyle}" />
+                                    <TextBlock Text="{Binding CpuUtilizationText}" Style="{DynamicResource MetricValueStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{DynamicResource MetricCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="メモリ" Style="{DynamicResource MetricTitleStyle}" />
+                                    <TextBlock Text="{Binding MemoryText}" Style="{DynamicResource MetricValueStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{DynamicResource MetricCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="ディスクI/O" Style="{DynamicResource MetricTitleStyle}" />
+                                    <TextBlock Text="{Binding DiskText}" Style="{DynamicResource MetricValueStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{DynamicResource MetricCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="ネットワーク" Style="{DynamicResource MetricTitleStyle}" />
+                                    <TextBlock Text="{Binding NetText}" Style="{DynamicResource MetricValueStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{DynamicResource MetricCardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="PerfScore" Style="{DynamicResource MetricTitleStyle}" />
+                                    <TextBlock Text="{Binding PerfScoreText}" Style="{DynamicResource MetricValueGlowStyle}" />
+                                </StackPanel>
+                            </Border>
+                        </WrapPanel>
 
-        <Grid Grid.Row="5" Margin="0,16,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <GroupBox Grid.Column="0" Header="Log" Margin="0,0,8,0">
-                <DockPanel>
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                        <Button Content="ログをコピー" Width="120" Click="CopyLogsButton_OnClick" />
+                        <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="セットアップ" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                                <TextBlock Text="{Binding SetupInstructionsText}" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextBrush}" />
+                                <CheckBox Content="終了時に Core Temp も終了する（同意時のみ）" IsChecked="{Binding CloseCoreTempOnExitConsent}" Margin="0,8,0,0" Foreground="{DynamicResource TextBrush}" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                    <ListBox ItemsSource="{Binding Logs}" />
-                </DockPanel>
-            </GroupBox>
-            <GroupBox Grid.Column="1" Header="Diagnostics (sensors)">
-                <DockPanel>
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                        <Button Content="診断更新" Width="100" Click="RefreshDiagnosticsButton_OnClick" />
-                        <Button Content="診断エクスポート" Width="140" Margin="8,0,0,0" Click="ExportDiagnosticsButton_OnClick" />
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Charts">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <TextBlock Text="直近60秒" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,8" />
+                        <Border Style="{DynamicResource ChartCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="温度 (°C)" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" />
+                                <Canvas Height="140" Margin="0,8,0,0">
+                                    <Rectangle Width="960" Height="140" Fill="{DynamicResource SurfaceAltBrush}" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" />
+                                    <Path Data="{Binding TempChartData}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2" />
+                                </Canvas>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{DynamicResource ChartCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="CPU Util (%)" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" />
+                                <Canvas Height="140" Margin="0,8,0,0">
+                                    <Rectangle Width="960" Height="140" Fill="{DynamicResource SurfaceAltBrush}" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" />
+                                    <Path Data="{Binding CpuChartData}" Stroke="{DynamicResource SuccessBrush}" StrokeThickness="2" />
+                                </Canvas>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{DynamicResource ChartCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="Memory Util (%)" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" />
+                                <Canvas Height="140" Margin="0,8,0,0">
+                                    <Rectangle Width="960" Height="140" Fill="{DynamicResource SurfaceAltBrush}" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" />
+                                    <Path Data="{Binding MemChartData}" Stroke="{DynamicResource WarningBrush}" StrokeThickness="2" />
+                                </Canvas>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                    <TextBox Text="{Binding DiagnosticSensorsText}" FontFamily="Consolas" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" IsReadOnly="True" />
-                </DockPanel>
-            </GroupBox>
-        </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="System Profile">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <CheckBox Content="同意してランキング用カテゴリを生成する（ローカルのみ）" IsChecked="{Binding OptInConsent}" Foreground="{DynamicResource TextBrush}" />
+                        <Button Content="プロファイル更新" Width="130" Margin="12,0,0,0" Click="RefreshProfileButton_OnClick" />
+                    </StackPanel>
+
+                    <GroupBox Grid.Row="1" Header="System Profile" Foreground="{DynamicResource TextBrush}" BorderBrush="{DynamicResource BorderBrush}">
+                        <TextBox Text="{Binding ProfileText}" FontFamily="Consolas" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Background="{DynamicResource SurfaceAltBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0" />
+                    </GroupBox>
+
+                    <GroupBox Grid.Row="2" Header="Ranking Category (Opt-in only)" Margin="0,10,0,0" Foreground="{DynamicResource TextBrush}" BorderBrush="{DynamicResource BorderBrush}">
+                        <TextBox Text="{Binding RankingProfileText}" FontFamily="Consolas" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Background="{DynamicResource SurfaceAltBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0" />
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Diagnostics">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <GroupBox Grid.Column="0" Header="Log" Margin="0,0,8,0" Foreground="{DynamicResource TextBrush}" BorderBrush="{DynamicResource BorderBrush}">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                                <Button Content="ログをコピー" Width="120" Click="CopyLogsButton_OnClick" />
+                                <Button Content="再接続" Width="100" Margin="8,0,0,0" Click="ReconnectButton_OnClick" />
+                                <Button Content="SensorHelper再起動" Width="150" Margin="8,0,0,0" Click="RestartHelperButton_OnClick" />
+                            </StackPanel>
+                            <ListBox ItemsSource="{Binding Logs}" Background="{DynamicResource SurfaceAltBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0" />
+                        </DockPanel>
+                    </GroupBox>
+                    <GroupBox Grid.Column="1" Header="Diagnostics (sensors)" Foreground="{DynamicResource TextBrush}" BorderBrush="{DynamicResource BorderBrush}">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                                <Button Content="診断更新" Width="100" Click="RefreshDiagnosticsButton_OnClick" />
+                                <Button Content="診断エクスポート" Width="140" Margin="8,0,0,0" Click="ExportDiagnosticsButton_OnClick" />
+                            </StackPanel>
+                            <TextBox Text="{Binding DiagnosticSensorsText}" FontFamily="Consolas" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" IsReadOnly="True" Background="{DynamicResource SurfaceAltBrush}" Foreground="{DynamicResource TextBrush}" BorderThickness="0" />
+                        </DockPanel>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+        </TabControl>
     </Grid>
 </Window>
