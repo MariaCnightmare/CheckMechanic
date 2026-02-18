@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     public string CpuUtilizationText { get; set; } = "CPU使用率: 未取得";
     public string StatusText { get; set; } = "⚠ 起動中";
     public string RestrictionText { get; set; } = "必須要件未達: 温度取得が必要です。";
+    public string SetupInstructionsText { get; set; } = "Core Temp をインストールして起動し、「再チェック」を実行してください。";
     public string MainFeatureText { get; set; } = "制限モード: 主要機能は利用できません。診断情報を確認してください。";
     public string DiagnosticSensorsText { get; set; } = "(未取得)";
     public ObservableCollection<string> Logs { get; } = new();
@@ -125,7 +126,7 @@ public partial class MainWindow : Window
             {
                 SetStatus($"❌ Telemetry HTTP {(int)response.StatusCode}");
                 CpuTemperatureText = "未取得";
-                SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。");
+                SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
                 AddLog($"telemetry HTTP {(int)response.StatusCode}");
                 RefreshBindings();
                 return;
@@ -138,7 +139,7 @@ public partial class MainWindow : Window
             {
                 SetStatus("❌ Telemetry parse failed");
                 CpuTemperatureText = "未取得";
-                SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。");
+                SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
                 AddLog("telemetry parse failed");
                 RefreshBindings();
                 return;
@@ -149,7 +150,7 @@ public partial class MainWindow : Window
                 CpuTemperatureText = $"{temp:F1} °C";
                 CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
                 SetStatus("✅ OK");
-                SetRestrictedMode(false, string.Empty);
+                SetRestrictedMode(false, string.Empty, string.Empty);
                 AddLog($"temp={temp:F1}C util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider={payload.Cpu.ProviderUsed ?? "unknown"} label={payload.Cpu.Label}");
             }
             else
@@ -157,7 +158,10 @@ public partial class MainWindow : Window
                 CpuTemperatureText = "未取得";
                 CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
                 SetStatus("❌ 必須要件未達（温度取得不可）");
-                SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。管理者で再試行してください。");
+                SetRestrictedMode(
+                    true,
+                    "必須要件未達: 温度取得が必要です。管理者で再試行してください。",
+                    BuildSetupInstructions(payload.Cpu.ProviderErrors));
                 var providerErrors = payload.Cpu.ProviderErrors?.Count > 0 ? string.Join(",", payload.Cpu.ProviderErrors) : "none";
                 AddLog($"temperature unavailable: code={payload.Cpu.ErrorCode ?? "unknown"} detail={payload.Cpu.Error ?? "unknown"} util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider_errors={providerErrors}");
                 await RefreshDiagnosticsAsync();
@@ -169,7 +173,7 @@ public partial class MainWindow : Window
         {
             CpuTemperatureText = "未取得";
             SetStatus("❌ SensorHelper 未接続");
-            SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。");
+            SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
             AddLog(SanitizeError(ex.Message));
             RefreshBindings();
         }
@@ -177,7 +181,7 @@ public partial class MainWindow : Window
         {
             CpuTemperatureText = "未取得";
             SetStatus("❌ 取得失敗");
-            SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。");
+            SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
             AddLog("telemetry request failed");
             RefreshBindings();
         }
@@ -264,6 +268,13 @@ public partial class MainWindow : Window
         await EnsureHelperAvailableAsync();
     }
 
+    private async void RecheckButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        await EnsureHelperAvailableAsync();
+        await PollTelemetryAsync();
+        await RefreshDiagnosticsAsync();
+    }
+
     private async void RestartHelperButton_OnClick(object sender, RoutedEventArgs e)
     {
         TryKillHelperProcesses();
@@ -332,13 +343,18 @@ public partial class MainWindow : Window
         RefreshBindings();
     }
 
-    private void SetRestrictedMode(bool restricted, string reason)
+    private void SetRestrictedMode(bool restricted, string reason, string setupInstructions)
     {
         _isRestrictedMode = restricted;
         RestrictionText = restricted ? reason : string.Empty;
+        SetupInstructionsText = restricted ? setupInstructions : string.Empty;
         MainFeatureText = restricted
             ? "制限モード: 温度取得が確認できるまで主要画面は利用不可です。診断情報を確認してください。"
             : "通常モード: 温度取得を確認済みです。";
+        if (restricted)
+        {
+            CpuTemperatureText = "利用不可（温度要件未達）";
+        }
     }
 
     private void AddLog(string message)
@@ -419,6 +435,20 @@ public partial class MainWindow : Window
         {
             AddLog("helper terminate failed");
         }
+    }
+
+    private static string BuildSetupInstructions(IReadOnlyList<string>? providerErrors)
+    {
+        var list = providerErrors ?? Array.Empty<string>();
+        if (list.Any(x => x.Contains("coretemp:TEMP_CORETEMP_SHM_NOT_FOUND", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Core Temp が未検出です。Core Temp をインストールして起動し、Shared Memory を有効化したうえで「再チェック」を実行してください。";
+        }
+        if (list.Any(x => x.Contains("coretemp:TEMP_CORETEMP_VALUES_UNAVAILABLE", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Core Temp は検出されていますが温度値を取得できません。管理者で再試行し、Core Temp の表示値を確認してください。";
+        }
+        return "Core Temp を起動した状態で「再チェック」または「管理者でSensorHelperを再起動して再試行」を実行してください。";
     }
 
     private static async Task<bool> IsPortOpenAsync()

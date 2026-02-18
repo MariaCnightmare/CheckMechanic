@@ -52,7 +52,8 @@ streamlit run app.py
 
 ### 対応PCの定義（temperature-required）
 - `v1/telemetry` で `cpu.temp_c` が継続的に取得できること
-- 取得経路は `LibreHardwareMonitorLib` を優先し、必要に応じて WMI をフォールバック
+- 取得経路は `Core Temp Shared Memory` を必須プロバイダとして使用
+- `LibreHardwareMonitorLib` / `WMI` は診断用（参考値）として扱う
 - `cpu.temp_c` が `null` の場合は非対応扱い（`error_code` を返却）
 
 ### 管理者権限について
@@ -62,6 +63,11 @@ streamlit run app.py
 
 ### 非対応時の案内文言（統一）
 - `必須要件未達: 温度取得が必要です。管理者で再試行してください。`
+
+### 配布（S3 + CloudFront）
+- Microsoft Store は使用せず、S3 + CloudFront 経由で配布します
+- 手順は `docs/distribution_s3.md` を参照
+- 秘密情報（AWSキー等）はリポジトリに保存しません
 
 ### Build / Run（Windows, .NET 8）
 ```bash

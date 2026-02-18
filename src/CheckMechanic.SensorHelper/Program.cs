@@ -2,6 +2,8 @@ using System.Net;
 using System.Management;
 using System.Text;
 using System.Text.Json;
+using System.IO.MemoryMappedFiles;
+using System.Runtime.InteropServices;
 using CheckMechanic.Shared;
 using LibreHardwareMonitor.Hardware;
 
@@ -219,73 +221,30 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 
     var util = ReadCpuUtilization(monitor);
     var providerErrors = new List<string>();
-    const string providerLhm = "lhm";
 
-    if (monitor is not null)
-    {
-        try
-        {
-            var sensors = CollectTemperatureSensors(monitor);
-            if (sensors.Count > 0)
-            {
-                var valued = sensors.Where(s => EffectiveTemp(s) is not null).ToList();
-                var valuedPackage = valued.FirstOrDefault(s => ClassifyCpuCandidateType(s.SensorName) == "package");
-                var valuedCoreMax = valued.FirstOrDefault(s => ClassifyCpuCandidateType(s.SensorName) == "core_max");
-                var valuedCoreAverage = valued.FirstOrDefault(s => ClassifyCpuCandidateType(s.SensorName) == "core_average");
-                var valuedCpuLike = valued.FirstOrDefault(s => IsCpuLike(s.HardwarePath, s.SensorName));
-                var anyCpuLike = sensors.FirstOrDefault(s => IsCpuLike(s.HardwarePath, s.SensorName));
-
-                var picked = valuedPackage ?? valuedCoreMax ?? valuedCoreAverage ?? valuedCpuLike ?? anyCpuLike;
-                var temp = picked is null ? null : EffectiveTemp(picked);
-                if (temp is not null)
-                {
-                    return new CpuTelemetry
-                    {
-                        TempC = temp,
-                        UtilPercent = util,
-                        Label = picked is null ? null : $"{picked.HardwarePath} / {picked.SensorName}",
-                        Source = "LibreHardwareMonitorLib",
-                        ProviderUsed = providerLhm,
-                        Error = null,
-                        ErrorCode = null,
-                        ProviderErrors = providerErrors,
-                    };
-                }
-                providerErrors.Add("lhm:TEMP_SENSOR_VALUES_UNAVAILABLE");
-            }
-            else
-            {
-                providerErrors.Add("lhm:TEMP_SENSOR_NOT_FOUND");
-            }
-        }
-        catch
-        {
-            providerErrors.Add("lhm:TEMP_SENSOR_READ_FAILED");
-        }
-    }
-    else
-    {
-        var initCode = sensorInitError == "sensor backend initializing"
-            ? "TEMP_BACKEND_INITIALIZING"
-            : "TEMP_BACKEND_INIT_FAILED";
-        providerErrors.Add($"lhm:{initCode}");
-    }
-
-    if (TryReadWmiTemperature(out var wmiTemp, out var wmiLabel, out var wmiErrorCode))
+    // Temperature-required mode: Core Temp shared memory is authoritative.
+    if (TryReadCoreTempTemperature(out var coreTempValue, out var coreTempLabel, out var coreTempError))
     {
         return new CpuTelemetry
         {
-            TempC = wmiTemp,
+            TempC = coreTempValue,
             UtilPercent = util,
-            Label = wmiLabel,
-            Source = "WMI",
-            ProviderUsed = "wmi_acpi",
+            Label = coreTempLabel,
+            Source = "CoreTempSharedMemory",
+            ProviderUsed = "coretemp",
             Error = null,
             ErrorCode = null,
             ProviderErrors = providerErrors,
         };
     }
-    if (!string.IsNullOrWhiteSpace(wmiErrorCode))
+    if (!string.IsNullOrWhiteSpace(coreTempError))
+    {
+        providerErrors.Add($"coretemp:{coreTempError}");
+    }
+
+    // LHM/WMI are diagnostics-only in temperature-required mode.
+    CollectLhmDiagnosticErrors(monitor, sensorInitError, providerErrors);
+    if (!TryReadWmiTemperature(out _, out _, out var wmiErrorCode) && !string.IsNullOrWhiteSpace(wmiErrorCode))
     {
         providerErrors.Add($"wmi:{wmiErrorCode}");
     }
@@ -439,4 +398,140 @@ static bool TryReadWmiTemperature(out double? tempC, out string? label, out stri
     }
 }
 
+static bool TryReadCoreTempTemperature(out double? tempC, out string? label, out string? errorCode)
+{
+    static bool TryFromMapping(string mappingName, out double? mappingTempC, out string? mappingLabel, out string? mappingErrorCode)
+    {
+        try
+        {
+            using var mmf = MemoryMappedFile.OpenExisting(mappingName, MemoryMappedFileRights.Read);
+            var size = Marshal.SizeOf<CoreTempSharedData>();
+            using var accessor = mmf.CreateViewAccessor(0, size, MemoryMappedFileAccess.Read);
+            var raw = new byte[size];
+            accessor.ReadArray(0, raw, 0, raw.Length);
+            var handle = GCHandle.Alloc(raw, GCHandleType.Pinned);
+            try
+            {
+                var data = Marshal.PtrToStructure<CoreTempSharedData>(handle.AddrOfPinnedObject());
+                var coreCount = (int)Math.Clamp(data.CoreCount, 0u, 256u);
+                if (coreCount <= 0)
+                {
+                    mappingTempC = null;
+                    mappingLabel = null;
+                    mappingErrorCode = "TEMP_CORETEMP_NO_CORES";
+                    return false;
+                }
+
+                var temps = data.Temps.Take(coreCount).Where(t => t is > -40 and < 150).ToList();
+                if (temps.Count == 0)
+                {
+                    mappingTempC = null;
+                    mappingLabel = null;
+                    mappingErrorCode = "TEMP_CORETEMP_VALUES_UNAVAILABLE";
+                    return false;
+                }
+
+                mappingTempC = temps.Max();
+                mappingLabel = "Core Temp Shared Memory / Core Max";
+                mappingErrorCode = null;
+                return true;
+            }
+            finally
+            {
+                handle.Free();
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            mappingTempC = null;
+            mappingLabel = null;
+            mappingErrorCode = "TEMP_CORETEMP_SHM_NOT_FOUND";
+            return false;
+        }
+        catch
+        {
+            mappingTempC = null;
+            mappingLabel = null;
+            mappingErrorCode = "TEMP_CORETEMP_READ_FAILED";
+            return false;
+        }
+    }
+
+    if (TryFromMapping("CoreTempMappingObject", out tempC, out label, out var baseError))
+    {
+        errorCode = baseError;
+        return true;
+    }
+    if (TryFromMapping("CoreTempMappingObjectEx", out tempC, out label, out var exError))
+    {
+        errorCode = exError;
+        return true;
+    }
+
+    tempC = null;
+    label = null;
+    errorCode = exError ?? baseError ?? "TEMP_CORETEMP_UNAVAILABLE";
+    return false;
+}
+
+static void CollectLhmDiagnosticErrors(Computer? monitor, string? sensorInitError, List<string> providerErrors)
+{
+    if (monitor is null)
+    {
+        var initCode = sensorInitError == "sensor backend initializing"
+            ? "TEMP_BACKEND_INITIALIZING"
+            : "TEMP_BACKEND_INIT_FAILED";
+        providerErrors.Add($"lhm:{initCode}");
+        return;
+    }
+
+    try
+    {
+        var sensors = CollectTemperatureSensors(monitor).Where(s => IsCpuLike(s.HardwarePath, s.SensorName)).ToList();
+        if (sensors.Count == 0)
+        {
+            providerErrors.Add("lhm:TEMP_SENSOR_NOT_FOUND");
+            return;
+        }
+
+        var anyValue = sensors.Any(s =>
+            (s.Value is float v && v is > -40 and < 150) ||
+            (s.Max is float max && max is > -40 and < 150) ||
+            (s.Min is float min && min is > -40 and < 150));
+        if (anyValue)
+        {
+            providerErrors.Add("lhm:TEMP_DIAGNOSTIC_VALUE_AVAILABLE");
+        }
+        else
+        {
+            providerErrors.Add("lhm:TEMP_SENSOR_VALUES_UNAVAILABLE");
+        }
+    }
+    catch
+    {
+        providerErrors.Add("lhm:TEMP_SENSOR_READ_FAILED");
+    }
+}
+
 record TempSensorSnapshot(string HardwarePath, string SensorName, float? Value, float? Min, float? Max);
+
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+struct CoreTempSharedData
+{
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
+    public uint[] Loads;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+    public uint[] TjMax;
+    public uint CoreCount;
+    public uint CpuCount;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
+    public float[] Temps;
+    public float Vid;
+    public float CpuSpeed;
+    public float FsbSpeed;
+    public float Multiplier;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 100)]
+    public string CpuName;
+    public byte Fahrenheit;
+    public byte DeltaToTjMax;
+}
