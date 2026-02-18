@@ -302,8 +302,6 @@ static void WalkHardware(IHardware hw, List<TempSensorSnapshot> sensors)
     }
 }
 
-record TempSensorSnapshot(string HardwareName, string SensorName, float? Value, float? Min, float? Max);
-
 static double? ReadCpuUtilization(Computer? monitor)
 {
     if (monitor is null)
@@ -345,3 +343,5 @@ static double? ReadCpuUtilization(Computer? monitor)
         return null;
     }
 }
+
+record TempSensorSnapshot(string HardwareName, string SensorName, float? Value, float? Min, float? Max);
