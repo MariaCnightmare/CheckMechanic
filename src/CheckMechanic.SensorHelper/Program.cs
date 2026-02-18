@@ -163,6 +163,23 @@ static async Task WriteJsonAsync(HttpListenerResponse response, int statusCode, 
 
 static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 {
+    static double? EffectiveTemp(ISensor s)
+    {
+        if (s.Value is float v)
+        {
+            return v;
+        }
+        if (s.Max is float max)
+        {
+            return max;
+        }
+        if (s.Min is float min)
+        {
+            return min;
+        }
+        return null;
+    }
+
     if (monitor is null)
     {
         return new CpuTelemetry
@@ -213,7 +230,7 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
             };
         }
 
-        var valued = sensors.Where(s => s.Value is not null).ToList();
+        var valued = sensors.Where(s => EffectiveTemp(s) is not null).ToList();
         var valuedPackage = valued.FirstOrDefault(s => s.Name.Contains("package", StringComparison.OrdinalIgnoreCase));
         var anyValued = valued.FirstOrDefault();
 
@@ -223,9 +240,9 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 
         return new CpuTelemetry
         {
-            TempC = picked?.Value,
+            TempC = picked is null ? null : EffectiveTemp(picked),
             Label = picked?.Name,
-            Error = picked?.Value is null ? "temperature unavailable" : null,
+            Error = picked is null || EffectiveTemp(picked) is null ? "temperature unavailable" : null,
         };
     }
     catch
