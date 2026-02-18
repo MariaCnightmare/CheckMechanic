@@ -165,23 +165,17 @@ public partial class MainWindow : Window
 
     private bool TryStartHelper()
     {
-        var helperPath = ResolveHelperPath();
-        if (helperPath is null)
+        var startInfo = ResolveHelperStartInfo();
+        if (startInfo is null)
         {
-            AddLog("helper exe not found");
+            AddLog("helper binary not found");
             return false;
         }
 
         try
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = helperPath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = Path.GetDirectoryName(helperPath),
-            });
-            AddLog($"helper started: {helperPath}");
+            Process.Start(startInfo);
+            AddLog($"helper started: {startInfo.FileName} {startInfo.Arguments}".Trim());
             return true;
         }
         catch (Exception)
@@ -191,17 +185,48 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string? ResolveHelperPath()
+    private static ProcessStartInfo? ResolveHelperStartInfo()
     {
         var baseDir = AppContext.BaseDirectory;
-        var candidates = new[]
+        var exeCandidates = new[]
         {
             Path.Combine(baseDir, "CheckMechanic.SensorHelper.exe"),
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "CheckMechanic.SensorHelper", "bin", "Debug", "net8.0-windows", "CheckMechanic.SensorHelper.exe")),
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "CheckMechanic.SensorHelper", "bin", "Release", "net8.0-windows", "CheckMechanic.SensorHelper.exe")),
         };
 
-        return candidates.FirstOrDefault(File.Exists);
+        var exePath = exeCandidates.FirstOrDefault(File.Exists);
+        if (exePath is not null)
+        {
+            return new ProcessStartInfo
+            {
+                FileName = exePath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(exePath),
+            };
+        }
+
+        var dllCandidates = new[]
+        {
+            Path.Combine(baseDir, "CheckMechanic.SensorHelper.dll"),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "CheckMechanic.SensorHelper", "bin", "Debug", "net8.0-windows", "CheckMechanic.SensorHelper.dll")),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "CheckMechanic.SensorHelper", "bin", "Release", "net8.0-windows", "CheckMechanic.SensorHelper.dll")),
+        };
+        var dllPath = dllCandidates.FirstOrDefault(File.Exists);
+        if (dllPath is not null)
+        {
+            return new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"\"{dllPath}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(dllPath),
+            };
+        }
+
+        return null;
     }
 
     private async void ReconnectButton_OnClick(object sender, RoutedEventArgs e)
