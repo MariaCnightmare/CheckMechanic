@@ -5,6 +5,7 @@ using LibreHardwareMonitor.Hardware;
 
 const string version = "1.0";
 const int port = 17805;
+Console.WriteLine("sensor helper starting");
 Mutex? instanceMutex = null;
 try
 {
@@ -12,6 +13,7 @@ try
     instanceMutex = new Mutex(true, "CheckMechanic.SensorHelper.Singleton", out var createdNew);
     if (!createdNew)
     {
+        Console.WriteLine("sensor helper already running");
         return;
     }
 }
@@ -85,7 +87,7 @@ catch (IOException ex) when (ex.Message.Contains("address", StringComparison.Ord
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"helper fatal error: {ex.GetType().Name}");
+    Console.Error.WriteLine($"helper fatal error: {ex.GetType().Name}: {ex.Message}");
 }
 
 static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
