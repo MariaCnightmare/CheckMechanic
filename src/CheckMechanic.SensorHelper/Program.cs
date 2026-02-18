@@ -202,23 +202,6 @@ static async Task WriteJsonAsync(HttpListenerResponse response, int statusCode, 
 
 static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
 {
-    static double? EffectiveTemp(TempSensorSnapshot s)
-    {
-        if (s.Value is float v)
-        {
-            return v;
-        }
-        if (s.Max is float max)
-        {
-            return max;
-        }
-        if (s.Min is float min)
-        {
-            return min;
-        }
-        return null;
-    }
-
     var util = ReadCpuUtilization(monitor);
     var providerErrors = new List<string>();
 
