@@ -41,7 +41,12 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <GroupBox Grid.Column="0" Header="Log" Margin="0,0,8,0">
-                <ListBox ItemsSource="{Binding Logs}" />
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="ログをコピー" Width="120" Click="CopyLogsButton_OnClick" />
+                    </StackPanel>
+                    <ListBox ItemsSource="{Binding Logs}" />
+                </DockPanel>
             </GroupBox>
             <GroupBox Grid.Column="1" Header="Diagnostics (sensors)">
                 <DockPanel>

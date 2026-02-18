@@ -434,6 +434,27 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CopyLogsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (Logs.Count == 0)
+            {
+                Clipboard.SetText(string.Empty);
+                AddLog("logs copied: empty");
+                return;
+            }
+
+            var text = string.Join(Environment.NewLine, Logs);
+            Clipboard.SetText(text);
+            AddLog($"logs copied: {Logs.Count} lines");
+        }
+        catch (Exception ex)
+        {
+            AddLog($"log copy failed: {ex.GetType().Name}: {SanitizeError(ex.Message)}");
+        }
+    }
+
     private void AddLog(string message)
     {
         var line = $"{DateTime.Now:HH:mm:ss} {message}";
