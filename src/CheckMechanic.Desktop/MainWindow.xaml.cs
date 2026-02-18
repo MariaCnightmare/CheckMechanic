@@ -10,7 +10,6 @@ using System.Windows;
 using System.Windows.Threading;
 using CheckMechanic.Shared;
 using FlaUI.Core;
-using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.UIA3;
@@ -647,7 +646,8 @@ public partial class MainWindow : Window
 
         var advanced = settingsWindow.FindFirstDescendant(cf =>
             cf.ByControlType(ControlType.TabItem).And(cf.ByName("Advanced")));
-        advanced?.AsTabItem().Select();
+        advanced?.Focus();
+        advanced?.Click();
         Thread.Sleep(300);
 
         var checkbox = settingsWindow.FindFirstDescendant(cf =>
@@ -656,10 +656,10 @@ public partial class MainWindow : Window
         {
             throw new InvalidOperationException("SNMP shared memory checkbox not found.");
         }
-        var checkBoxControl = checkbox.AsCheckBox();
-        if (checkBoxControl.IsChecked != true)
+        var toggleState = checkbox.Patterns.Toggle.PatternOrDefault?.ToggleState;
+        if (toggleState != ToggleState.On)
         {
-            checkBoxControl.Click();
+            checkbox.Click();
         }
 
         var applyOrOk = settingsWindow.FindFirstDescendant(cf =>
@@ -671,7 +671,7 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("Apply/OK button not found.");
         }
 
-        applyOrOk.AsButton().Invoke();
+        applyOrOk.Invoke();
     }
 
     [DllImport("user32.dll")]
