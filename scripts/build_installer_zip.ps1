@@ -21,10 +21,13 @@ $payloadWxsPath = Join-Path $repoRoot "installer/AppPayload.wxs"
 function New-SafeId {
     param(
         [string]$Prefix,
-        [string]$Input
+        [string]$Text
     )
 
-    $raw = ($Input -replace '[^A-Za-z0-9_]', '_')
+    $raw = ($Text -replace '[^A-Za-z0-9_]', '_')
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        $raw = "item"
+    }
     if ($raw.Length -gt 54) {
         $raw = $raw.Substring(0, 54)
     }
@@ -49,16 +52,18 @@ function Write-AppPayloadWxs {
     $lines += '  <Fragment>'
     $lines += '    <ComponentGroup Id="HarvestedAppPayload">'
 
+    $index = 0
     foreach ($file in $files) {
         $base = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
         $ext = [System.IO.Path]::GetExtension($file.Name)
-        $componentId = New-SafeId -Prefix "Cmp" -Input $base
-        $fileId = New-SafeId -Prefix "Fil" -Input ("$base$ext")
+        $componentId = New-SafeId -Prefix "Cmp$index" -Text $base
+        $fileId = New-SafeId -Prefix "Fil$index" -Text ("$base$ext")
         $source = $file.FullName.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;')
 
         $lines += "      <Component Id=""$componentId"" Directory=""INSTALLFOLDER"" Guid=""*"">"
         $lines += "        <File Id=""$fileId"" Source=""$source"" KeyPath=""yes"" />"
         $lines += '      </Component>'
+        $index++
     }
 
     $lines += '    </ComponentGroup>'
