@@ -9,7 +9,8 @@
           DisableRemove="no">
 
     <BootstrapperApplication>
-      <bal:WixStandardBootstrapperApplication Theme="standard"
+      <bal:WixStandardBootstrapperApplication Theme="hyperlinkLicense"
+                                              LicenseUrl="https://github.com/MariaCnightmare/CheckMechanic/blob/main/LICENSE"
                                               SuppressOptionsUI="no"
                                               ShowVersion="yes" />
     </BootstrapperApplication>
