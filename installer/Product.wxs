@@ -22,6 +22,10 @@
       <Directory Id="ProgramMenuCheckMechanicFolder" Name="CheckMechanic" />
     </StandardDirectory>
 
+    <Files Include="$(var.AppPublishDir)\**"
+           Exclude="$(var.AppPublishDir)\CheckMechanic.Desktop.exe"
+           Directory="INSTALLFOLDER" />
+
     <ComponentGroup Id="AppFiles">
       <Component Id="DesktopExeComponent" Directory="INSTALLFOLDER" Guid="*">
         <File Id="DesktopExeFile" Source="$(var.AppPublishDir)\CheckMechanic.Desktop.exe" KeyPath="yes" />
@@ -33,9 +37,6 @@
         <RemoveFolder Id="RemoveProgramMenuCheckMechanicFolder"
                       Directory="ProgramMenuCheckMechanicFolder"
                       On="uninstall" />
-      </Component>
-      <Component Id="SensorHelperExeComponent" Directory="INSTALLFOLDER" Guid="*">
-        <File Id="SensorHelperExeFile" Source="$(var.AppPublishDir)\CheckMechanic.SensorHelper.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
