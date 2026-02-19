@@ -22,14 +22,17 @@
       <Directory Id="ProgramMenuCheckMechanicFolder" Name="CheckMechanic" />
     </StandardDirectory>
 
-    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
-      <Files Include="$(var.AppPublishDir)\**"
-             Exclude="$(var.AppPublishDir)\CheckMechanic.Desktop.exe" />
+    <ComponentGroup Id="AppFiles">
+      <Component Id="DesktopExeComponent" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="DesktopExeFile" Source="$(var.AppPublishDir)\CheckMechanic.Desktop.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="SensorHelperExeComponent" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="SensorHelperExeFile" Source="$(var.AppPublishDir)\CheckMechanic.SensorHelper.exe" KeyPath="yes" />
+      </Component>
     </ComponentGroup>
 
     <ComponentGroup Id="ShellEntries">
       <Component Id="MainExeComponent" Directory="INSTALLFOLDER" Guid="*">
-        <File Id="MainExeFile" Source="$(var.AppPublishDir)\CheckMechanic.Desktop.exe" KeyPath="yes" />
         <Shortcut Id="StartMenuShortcut"
                   Directory="ProgramMenuCheckMechanicFolder"
                   Name="CheckMechanic"
@@ -39,6 +42,12 @@
         <RemoveFolder Id="RemoveProgramMenuCheckMechanicFolder"
                       Directory="ProgramMenuCheckMechanicFolder"
                       On="uninstall" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\CheckMechanic"
+                       Name="Installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
       </Component>
     </ComponentGroup>
 

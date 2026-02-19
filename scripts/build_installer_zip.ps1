@@ -3,6 +3,7 @@ param(
     [string]$Version = "1.0.0",
     [string]$Runtime = "win-x64",
     [bool]$SelfContained = $true,
+    [bool]$PublishSingleFile = $true,
     [string]$CoreTempDownloadUrl = "https://www.alcpu.com/CoreTemp/Core-Temp-setup.exe",
     [switch]$UseLocalCoreTempPayload
 )
@@ -25,6 +26,7 @@ New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
     -Configuration $Configuration `
     -Runtime $Runtime `
     -SelfContained:$SelfContained `
+    -PublishSingleFile:$PublishSingleFile `
     -OutputDir "dist/app"
 
 $msiProj = Join-Path $repoRoot "installer/CheckMechanic.Msi.wixproj"

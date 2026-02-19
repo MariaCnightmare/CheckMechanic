@@ -27,12 +27,12 @@ Core Temp is treated as a required dependency for temperature-required mode.
 
 ### 1) Publish app
 ```powershell
-pwsh ./scripts/publish_win_x64.ps1 -Configuration Release -Runtime win-x64 -SelfContained $true
+pwsh ./scripts/publish_win_x64.ps1 -Configuration Release -Runtime win-x64 -SelfContained $true -PublishSingleFile $true
 ```
 
 ### 2) Build full installer Zip
 ```powershell
-pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0
+pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -PublishSingleFile $true
 ```
 
 Output:

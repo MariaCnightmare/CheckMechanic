@@ -97,7 +97,7 @@ dotnet run --project src/CheckMechanic.Desktop/CheckMechanic.Desktop.csproj
 - 生成物: `dist/CheckMechanic-Setup.zip`（中に `Setup.exe`）
 
 ```powershell
-pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0
+pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -PublishSingleFile $true
 ```
 
 - 既定では Core Temp インストーラを公式URLから取得して導入
