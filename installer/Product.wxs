@@ -29,8 +29,6 @@
                   Directory="ProgramMenuCheckMechanicFolder"
                   Name="CheckMechanic"
                   Description="CheckMechanic Desktop"
-                  Target="[INSTALLFOLDER]CheckMechanic.Desktop.exe"
-                  WorkingDirectory="INSTALLFOLDER"
                   Advertise="yes" />
         <RemoveFolder Id="RemoveProgramMenuCheckMechanicFolder"
                       Directory="ProgramMenuCheckMechanicFolder"
