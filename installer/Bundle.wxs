@@ -15,9 +15,6 @@
                                               ShowVersion="yes" />
     </BootstrapperApplication>
 
-    <Variable Name="WixStdBALaunchTarget" Value="[ProgramFiles64Folder]CheckMechanic\CheckMechanic.Desktop.exe" />
-    <Variable Name="WixStdBALaunchTargetElevatedId" Value="CheckMechanicMsi" />
-
     <!-- Core Temp detection: confirmed registry key on x64 -->
     <util:RegistrySearch Id="CoreTempUninstallKey"
                          Root="HKLM"
@@ -30,6 +27,7 @@
       <ExePackage Id="CoreTemp"
                   DisplayName="Core Temp"
                   PerMachine="yes"
+                  Permanent="yes"
                   SourceFile="$(var.CoreTempPayloadPath)"
                   InstallArguments="/VERYSILENT /NORESTART"
                   DetectCondition="CoreTempRegKeyExists = 1"
@@ -39,6 +37,7 @@
       <ExePackage Id="CoreTemp"
                   DisplayName="Core Temp"
                   PerMachine="yes"
+                  Permanent="yes"
                   Compressed="no"
                   DownloadUrl="$(var.CoreTempDownloadUrl)"
                   Name="CoreTempSetup.exe"
@@ -51,7 +50,6 @@
       <MsiPackage Id="CheckMechanicMsi"
                   SourceFile="$(var.MsiPath)"
                   Visible="no"
-                  DisplayInternalUI="no"
                   Vital="yes" />
     </Chain>
   </Bundle>
