@@ -59,9 +59,9 @@
     </DrawingBrush>
 
     <!-- ★ 追加：重い Effect は Resource として共有 -->
-    <DropShadowEffect x:Key="GlowEffect" Color="#49FF86" BlurRadius="14" ShadowDepth="0" Opacity="0.55" />
+    <DropShadowEffect x:Key="GlowEffect" Color="#49FF86" BlurRadius="10" ShadowDepth="0" Opacity="0.38" />
     <DropShadowEffect x:Key="ButtonHoverGlowEffect" Color="#49FF86" BlurRadius="10" ShadowDepth="0" Opacity="0.35" />
-    <DropShadowEffect x:Key="CardShadowEffect" Color="#030707" BlurRadius="18" ShadowDepth="0" Opacity="0.55" />
+    <DropShadowEffect x:Key="CardShadowEffect" Color="#030707" BlurRadius="14" ShadowDepth="0" Opacity="0.44" />
 
     <Style TargetType="Window">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
@@ -163,6 +163,13 @@
     <Style x:Key="ChartCardStyle" TargetType="Border" BasedOn="{StaticResource CardStyle}">
         <Setter Property="Padding" Value="12" />
         <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+
+    <Style TargetType="Expander">
+        <Setter Property="Background" Value="{DynamicResource Surface2Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8" />
     </Style>
 
     <Style x:Key="AxisLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource MetricSubStyle}">

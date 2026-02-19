@@ -72,6 +72,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string GpuKpiText { get; set; } = "--";
     public string GpuSubText { get; set; } = "--";
     public string DiskText { get; set; } = "未取得";
+    public string DiskCapacityText { get; set; } = "容量: --";
     public string NetText { get; set; } = "未取得";
     public string NetMetaText { get; set; } = "adapter: -";
     public string BatteryText { get; set; } = "N/A";
@@ -357,6 +358,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SetStatus($"❌ Telemetry HTTP {(int)response.StatusCode}");
                 CpuTemperatureText = "未取得";
+                DiskCapacityText = "容量: --";
                 SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
                 AddLog($"telemetry HTTP {(int)response.StatusCode}");
                 RefreshBindings();
@@ -370,6 +372,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SetStatus("❌ Telemetry parse failed");
                 CpuTemperatureText = "未取得";
+                DiskCapacityText = "容量: --";
                 SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
                 AddLog("telemetry parse failed");
                 RefreshBindings();
@@ -392,10 +395,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             GpuSubText = BuildGpuSubText(payload.Gpu);
 
             DiskText = $"R {FormatRate(payload.Disk.ReadBps)} / W {FormatRate(payload.Disk.WriteBps)}";
-            if (payload.Disk.TotalGb.HasValue || payload.Disk.FreeGb.HasValue)
-            {
-                DiskText += $"  |  {payload.Disk.FreeGb?.ToString("F0") ?? "?"}/{payload.Disk.TotalGb?.ToString("F0") ?? "?"} GB free";
-            }
+            DiskCapacityText = BuildDiskCapacityText(payload.Disk.TotalGb, payload.Disk.FreeGb);
 
             NetText = $"↓ {FormatRate(payload.Net.RecvBps)}  ↑ {FormatRate(payload.Net.SentBps)}";
             if (!string.IsNullOrWhiteSpace(payload.Net.ActiveAdapterName))
@@ -486,6 +486,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch (HttpRequestException ex)
         {
             CpuTemperatureText = "未取得";
+            DiskCapacityText = "容量: --";
             TempLatestText = "--";
             TempRingCenterText = "R";
             TempRingArcData = string.Empty;
@@ -499,6 +500,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch
         {
             CpuTemperatureText = "未取得";
+            DiskCapacityText = "容量: --";
             TempLatestText = "--";
             TempRingCenterText = "R";
             TempRingArcData = string.Empty;
@@ -1243,6 +1245,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return $"{value:F0} B/s";
     }
 
+    private static string BuildDiskCapacityText(double? totalGb, double? freeGb)
+    {
+        if (!totalGb.HasValue && !freeGb.HasValue)
+        {
+            return "容量: --";
+        }
+
+        var free = freeGb.HasValue ? $"{freeGb.Value:F0}" : "?";
+        var total = totalGb.HasValue ? $"{totalGb.Value:F0}" : "?";
+        return $"容量: Free {free} GB / Total {total} GB";
+    }
+
     private bool TryStartHelper(bool runAsAdmin = false)
     {
         var startInfo = ResolveHelperStartInfo(runAsAdmin);
@@ -1648,6 +1662,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         hc.Add(GpuSubText);
 
         hc.Add(DiskText);
+        hc.Add(DiskCapacityText);
         hc.Add(NetText);
         hc.Add(NetMetaText);
         hc.Add(NetDetailTooltipText);
