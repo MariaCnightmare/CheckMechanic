@@ -69,10 +69,12 @@ dotnet build $bundleProj -c $Configuration `
     -p:UseLocalCoreTempPayload=$useLocal `
     -p:CoreTempPayloadPath=$coreTempPayloadPath
 
-$setupExe = Join-Path $installerDir "Setup.exe"
-if (!(Test-Path $setupExe)) {
-    throw "Bundle build output not found: $setupExe"
+$bundleExe = Join-Path $installerDir "CheckMechanicBootstrapper.exe"
+if (!(Test-Path $bundleExe)) {
+    throw "Bundle build output not found: $bundleExe"
 }
+$setupExe = Join-Path $installerDir "Setup.exe"
+Copy-Item $bundleExe $setupExe -Force
 
 if (Test-Path $zipRoot) {
     Remove-Item -Recurse -Force $zipRoot
