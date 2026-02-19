@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Compile Include="Product.wxs" />
+    <Compile Include="AppPayload.wxs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -16,6 +16,57 @@ $appDir = Join-Path $distRoot "app"
 $installerDir = Join-Path $distRoot "installer"
 $zipRoot = Join-Path $distRoot "ziproot"
 $zipPath = Join-Path $distRoot "CheckMechanic-Setup.zip"
+$payloadWxsPath = Join-Path $repoRoot "installer/AppPayload.wxs"
+
+function New-SafeId {
+    param(
+        [string]$Prefix,
+        [string]$Input
+    )
+
+    $raw = ($Input -replace '[^A-Za-z0-9_]', '_')
+    if ($raw.Length -gt 54) {
+        $raw = $raw.Substring(0, 54)
+    }
+    if ($raw -match '^[0-9]') {
+        $raw = "_" + $raw
+    }
+    return "${Prefix}_${raw}"
+}
+
+function Write-AppPayloadWxs {
+    param(
+        [string]$PublishDir,
+        [string]$OutputWxsPath
+    )
+
+    $files = Get-ChildItem -Path $PublishDir -File |
+        Where-Object { $_.Name -ne "CheckMechanic.Desktop.exe" } |
+        Sort-Object Name
+
+    $lines = @()
+    $lines += '<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">'
+    $lines += '  <Fragment>'
+    $lines += '    <ComponentGroup Id="HarvestedAppPayload">'
+
+    foreach ($file in $files) {
+        $base = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+        $ext = [System.IO.Path]::GetExtension($file.Name)
+        $componentId = New-SafeId -Prefix "Cmp" -Input $base
+        $fileId = New-SafeId -Prefix "Fil" -Input ("$base$ext")
+        $source = $file.FullName.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;')
+
+        $lines += "      <Component Id=""$componentId"" Directory=""INSTALLFOLDER"" Guid=""*"">"
+        $lines += "        <File Id=""$fileId"" Source=""$source"" KeyPath=""yes"" />"
+        $lines += '      </Component>'
+    }
+
+    $lines += '    </ComponentGroup>'
+    $lines += '  </Fragment>'
+    $lines += '</Wix>'
+
+    Set-Content -Path $OutputWxsPath -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
+}
 
 if (Test-Path $installerDir) {
     Remove-Item -Recurse -Force $installerDir
@@ -28,6 +79,9 @@ New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
     -SelfContained:$SelfContained `
     -PublishSingleFile:$PublishSingleFile `
     -OutputDir "dist/app"
+
+Write-Host "Generating app payload wix fragment..."
+Write-AppPayloadWxs -PublishDir $appDir -OutputWxsPath $payloadWxsPath
 
 $msiProj = Join-Path $repoRoot "installer/CheckMechanic.Msi.wixproj"
 $bundleProj = Join-Path $repoRoot "installer/CheckMechanic.Bundle.wixproj"
