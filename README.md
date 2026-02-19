@@ -45,11 +45,18 @@ streamlit run app.py
   - Core Temp Shared Memory を必須経路として CPU 温度を取得
   - 温度未取得時は LHM/WMI を診断情報として併記
   - `127.0.0.1:17805` で `/health`, `/v1/telemetry`, `/v1/profile`, `/v1/sensors` を提供
-  - `v1/telemetry` は `cpu/memory/disk/net/gpu` を返却（null許容）
+  - `v1/telemetry` は `cpu/memory/disk/net/gpu/battery` を返却（null許容）
+  - 追加メトリクス: `cpu.clock_mhz`, `cpu.power_w`, `cpu.temp_package_c`, `cpu.temp_core_max_c`,
+    `gpu.vendor`, `gpu.driver_version`, `gpu.vram_used_mb`, `gpu.vram_total_mb`, `gpu.temperature_c`, `gpu.core_clock_mhz`, `gpu.memory_clock_mhz`,
+    `disk.total_gb`, `disk.free_gb`, `net.active_adapter_name`, `net.link_speed_mbps`
+  - `v1/profile` 追加情報: `machine_vendor`, `machine_model`, `uptime_hours`, `gpu_driver_version`
 - `src/CheckMechanic.Desktop`:
   - SensorHelper のヘルスチェックと自動起動
-  - Overview / Charts / System Profile / Diagnostics の4セクション表示
-  - 温度・CPU・メモリ・ディスク・ネット・PerfScore を表示
+  - 1画面ダッシュボード（Header + KPI + Charts + System Profile + Diagnostics折りたたみ）
+  - 温度・CPU・GPU・メモリ・ディスク・ネット・バッテリー・PerfScore を表示
+  - チャートは温度/CPU/GPU/メモリ/ディスク/ネットのY軸付き表示
+  - PerfScore はレーダー表示（CPU/Mem/Disk/Net/Thermal/GPU）＋詳細展開
+  - 「終了時に Core Temp も終了」はデフォルトONでヘッダー表示、設定はローカル保存
   - Opt-in ON 時のみランキング用カテゴリJSONをローカル生成（送信は未実装）
   - 温度値が取得できない環境では「必須要件未達」を表示し、制限モードへ移行
 
@@ -84,6 +91,17 @@ dotnet build CheckMechanic.sln
 dotnet run --project src/CheckMechanic.SensorHelper/CheckMechanic.SensorHelper.csproj
 dotnet run --project src/CheckMechanic.Desktop/CheckMechanic.Desktop.csproj
 ```
+
+### Installer build（Zip + Setup.exe, WiX Burn）
+- 詳細は `docs/INSTALLER.md` を参照
+- 生成物: `dist/CheckMechanic-Setup.zip`（中に `Setup.exe`）
+
+```powershell
+pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0
+```
+
+- 既定では Core Temp インストーラを公式URLから取得して導入
+- Core Temp の再配布条件はライセンス要確認（既定は同梱しない）
 
 ### API quick check
 ```powershell

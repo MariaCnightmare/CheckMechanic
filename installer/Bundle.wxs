@@ -1,0 +1,58 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Bundle Name="CheckMechanic Setup"
+          Manufacturer="CheckMechanic"
+          Version="$(var.BundleVersion)"
+          UpgradeCode="0E1F9A21-EE46-4DAB-A13D-8F0C6BB5C4E0"
+          DisableModify="yes"
+          DisableRemove="no">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication LicenseFile="..\LICENSE"
+                                              Theme="hyperlinkLicense"
+                                              SuppressOptionsUI="no"
+                                              ShowVersion="yes" />
+    </BootstrapperApplication>
+
+    <Variable Name="WixStdBALaunchTarget" Value="[ProgramFiles64Folder]CheckMechanic\CheckMechanic.Desktop.exe" />
+    <Variable Name="WixStdBALaunchTargetElevatedId" Value="CheckMechanicMsi" />
+
+    <!-- Core Temp detection: confirmed registry key on x64 -->
+    <util:RegistrySearch Id="CoreTempUninstallKey"
+                         Root="HKLM"
+                         Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{086D343F-8E78-4AFC-81AC-D6D414AFD8AC}_is1"
+                         Variable="CoreTempRegKeyExists"
+                         Result="exists" />
+
+    <Chain>
+<?if $(var.UseLocalCoreTempPayload) = 1 ?>
+      <ExePackage Id="CoreTemp"
+                  DisplayName="Core Temp"
+                  PerMachine="yes"
+                  SourceFile="$(var.CoreTempPayloadPath)"
+                  InstallArguments="/VERYSILENT /NORESTART"
+                  DetectCondition="CoreTempRegKeyExists = 1"
+                  InstallCondition="CoreTempRegKeyExists &lt;&gt; 1"
+                  Vital="yes" />
+<?else?>
+      <ExePackage Id="CoreTemp"
+                  DisplayName="Core Temp"
+                  PerMachine="yes"
+                  Compressed="no"
+                  DownloadUrl="$(var.CoreTempDownloadUrl)"
+                  Name="CoreTempSetup.exe"
+                  InstallArguments="/VERYSILENT /NORESTART"
+                  DetectCondition="CoreTempRegKeyExists = 1"
+                  InstallCondition="CoreTempRegKeyExists &lt;&gt; 1"
+                  Vital="yes" />
+<?endif?>
+
+      <MsiPackage Id="CheckMechanicMsi"
+                  SourceFile="$(var.MsiPath)"
+                  Visible="no"
+                  DisplayInternalUI="no"
+                  Vital="yes" />
+    </Chain>
+  </Bundle>
+</Wix>

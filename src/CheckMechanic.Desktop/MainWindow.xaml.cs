@@ -1621,7 +1621,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var list = providerErrors ?? Array.Empty<string>();
         if (list.Any(x => x.Contains("coretemp:TEMP_CORETEMP_SHM_NOT_FOUND", StringComparison.OrdinalIgnoreCase)))
         {
-            return "Core Temp が未検出です。Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
+            return "Core Temp が未検出です。配布された Setup.exe を実行して Core Temp を導入後、Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
         }
 
         if (list.Any(x => x.Contains("coretemp:TEMP_CORETEMP_VALUES_UNAVAILABLE", StringComparison.OrdinalIgnoreCase)))
@@ -1629,7 +1629,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return "Core Temp は検出されていますが温度値を取得できません。Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を確認し、管理者で再試行してください。";
         }
 
-        return "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」または「管理者でSensorHelperを再起動して再試行」を実行してください。";
+        return "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」または「管理者でSensorHelperを再起動して再試行」を実行してください。Core Temp が未導入なら Setup.exe を先に実行してください。";
     }
 
     private static async Task<bool> IsPortOpenAsync()
