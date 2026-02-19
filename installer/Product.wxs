@@ -25,35 +25,24 @@
     <ComponentGroup Id="AppFiles">
       <Component Id="DesktopExeComponent" Directory="INSTALLFOLDER" Guid="*">
         <File Id="DesktopExeFile" Source="$(var.AppPublishDir)\CheckMechanic.Desktop.exe" KeyPath="yes" />
+        <Shortcut Id="StartMenuShortcut"
+                  Directory="ProgramMenuCheckMechanicFolder"
+                  Name="CheckMechanic"
+                  Description="CheckMechanic Desktop"
+                  Target="[INSTALLFOLDER]CheckMechanic.Desktop.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Advertise="yes" />
+        <RemoveFolder Id="RemoveProgramMenuCheckMechanicFolder"
+                      Directory="ProgramMenuCheckMechanicFolder"
+                      On="uninstall" />
       </Component>
       <Component Id="SensorHelperExeComponent" Directory="INSTALLFOLDER" Guid="*">
         <File Id="SensorHelperExeFile" Source="$(var.AppPublishDir)\CheckMechanic.SensorHelper.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
-    <ComponentGroup Id="ShellEntries">
-      <Component Id="StartMenuShortcutComponent" Directory="ProgramMenuCheckMechanicFolder" Guid="*">
-        <Shortcut Id="StartMenuShortcut"
-                  Directory="ProgramMenuCheckMechanicFolder"
-                  Name="CheckMechanic"
-                  Description="CheckMechanic Desktop"
-                  Target="[INSTALLFOLDER]CheckMechanic.Desktop.exe"
-                  WorkingDirectory="INSTALLFOLDER" />
-        <RemoveFolder Id="RemoveProgramMenuCheckMechanicFolder"
-                      Directory="ProgramMenuCheckMechanicFolder"
-                      On="uninstall" />
-        <RegistryValue Root="HKCU"
-                       Key="Software\CheckMechanic"
-                       Name="StartMenuShortcut"
-                       Type="integer"
-                       Value="1"
-                       KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
-
     <Feature Id="MainFeature" Title="CheckMechanic" Level="1">
       <ComponentGroupRef Id="AppFiles" />
-      <ComponentGroupRef Id="ShellEntries" />
     </Feature>
   </Package>
 </Wix>
