@@ -975,25 +975,39 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return parts.Count == 0 ? "N/A" : string.Join(" / ", parts);
     }
 
-    private static string BuildBatteryText(BatteryTelemetry battery)
+    private static string BuildBatteryText(object? battery)
     {
-        if (!battery.Percent.HasValue && !battery.IsCharging.HasValue)
+        if (battery is null)
+        {
+            return "N/A";
+        }
+
+        var type = battery.GetType();
+        var percentObj = type.GetProperty("Percent")?.GetValue(battery);
+        var chargingObj = type.GetProperty("IsCharging")?.GetValue(battery);
+        var dischargeObj = type.GetProperty("DischargeW")?.GetValue(battery);
+
+        var percent = percentObj as double? ?? (percentObj is double p ? p : null);
+        var isCharging = chargingObj as bool? ?? (chargingObj is bool c ? c : null);
+        var dischargeW = dischargeObj as double? ?? (dischargeObj is double d ? d : null);
+
+        if (!percent.HasValue && !isCharging.HasValue)
         {
             return "N/A";
         }
 
         var parts = new List<string>();
-        if (battery.Percent.HasValue)
+        if (percent.HasValue)
         {
-            parts.Add($"{battery.Percent.Value:F0}%");
+            parts.Add($"{percent.Value:F0}%");
         }
-        if (battery.IsCharging.HasValue)
+        if (isCharging.HasValue)
         {
-            parts.Add(battery.IsCharging.Value ? "charging" : "discharging");
+            parts.Add(isCharging.Value ? "charging" : "discharging");
         }
-        if (battery.DischargeW.HasValue)
+        if (dischargeW.HasValue)
         {
-            parts.Add($"{battery.DischargeW.Value:F1}W");
+            parts.Add($"{dischargeW.Value:F1}W");
         }
         return string.Join(" / ", parts);
     }
