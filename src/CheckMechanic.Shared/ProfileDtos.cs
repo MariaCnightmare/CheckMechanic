@@ -27,6 +27,9 @@ public sealed class SystemProfileDto
     [JsonPropertyName("gpu_name")]
     public string? GpuName { get; set; }
 
+    [JsonPropertyName("gpu_driver_version")]
+    public string? GpuDriverVersion { get; set; }
+
     [JsonPropertyName("storage_primary_type")]
     public string? StoragePrimaryType { get; set; }
 
@@ -38,6 +41,15 @@ public sealed class SystemProfileDto
 
     [JsonPropertyName("temp_provider")]
     public string? TempProvider { get; set; }
+
+    [JsonPropertyName("machine_vendor")]
+    public string? MachineVendor { get; set; }
+
+    [JsonPropertyName("machine_model")]
+    public string? MachineModel { get; set; }
+
+    [JsonPropertyName("uptime_hours")]
+    public double? UptimeHours { get; set; }
 }
 
 public sealed class RankingProfileDto
