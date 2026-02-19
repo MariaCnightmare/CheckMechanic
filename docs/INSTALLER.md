@@ -38,6 +38,7 @@ pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -Pu
 Output:
 - `dist/installer/CheckMechanic.msi`
 - `dist/installer/Setup.exe`
+- `dist/installer/CoreTempSetup.exe`
 - `dist/CheckMechanic-Setup.zip`
 
 ## Core Temp handling
@@ -50,8 +51,9 @@ Bundle checks the following x64 registry key:
 If key exists, Core Temp install is skipped.
 
 ### Install mode (default)
-- Burn downloads Core Temp from official URL and runs silent install:
+- Build script downloads Core Temp from official URL and bundle runs silent install:
   - `/VERYSILENT /NORESTART`
+- Core Temp installer (`CoreTempSetup.exe`) is placed next to `Setup.exe` in the Zip.
 - If installer behavior changes and silent install fails, setup exits with error.
   - Fallback: install Core Temp manually from official page, then rerun `Setup.exe`.
 
@@ -68,7 +70,7 @@ pwsh ./scripts/build_installer_zip.ps1 -UseLocalCoreTempPayload
 
 ## Licensing / redistribution notes
 - Core Temp redistribution and automated download are subject to third-party license/terms.
-- Default policy in this repo is **not** to bundle Core Temp installer binary.
+- Default policy in this repo is **not** to commit Core Temp installer binary.
 - Verify the latest terms on official source before distributing at scale.
 
 ## End-user flow

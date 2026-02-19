@@ -43,10 +43,22 @@ if (!(Test-Path $msiPath)) {
 }
 
 $useLocal = if ($UseLocalCoreTempPayload.IsPresent) { "1" } else { "0" }
-$coreTempPayloadPath = Join-Path $repoRoot "installer/payload/CoreTempSetup.exe"
+$coreTempPayloadPath = Join-Path $installerDir "CoreTempSetup.exe"
 
-if ($UseLocalCoreTempPayload.IsPresent -and !(Test-Path $coreTempPayloadPath)) {
-    throw "UseLocalCoreTempPayload was specified, but payload is missing: $coreTempPayloadPath"
+if ($UseLocalCoreTempPayload.IsPresent) {
+    $localPayload = Join-Path $repoRoot "installer/payload/CoreTempSetup.exe"
+    if (!(Test-Path $localPayload)) {
+        throw "UseLocalCoreTempPayload was specified, but payload is missing: $localPayload"
+    }
+    Copy-Item $localPayload $coreTempPayloadPath -Force
+}
+else {
+    Write-Host "Downloading Core Temp installer from official URL..."
+    Invoke-WebRequest -Uri $CoreTempDownloadUrl -OutFile $coreTempPayloadPath
+}
+
+if (!(Test-Path $coreTempPayloadPath)) {
+    throw "Core Temp payload was not prepared: $coreTempPayloadPath"
 }
 
 Write-Host "Building Burn bundle..."
@@ -68,6 +80,7 @@ if (Test-Path $zipRoot) {
 New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
 
 Copy-Item $setupExe (Join-Path $zipRoot "Setup.exe") -Force
+Copy-Item $coreTempPayloadPath (Join-Path $zipRoot "CoreTempSetup.exe") -Force
 Copy-Item (Join-Path $repoRoot "LICENSE") (Join-Path $zipRoot "LICENSE.txt") -Force
 
 if (Test-Path $zipPath) {

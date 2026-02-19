@@ -9,8 +9,7 @@
           DisableRemove="no">
 
     <BootstrapperApplication>
-      <bal:WixStandardBootstrapperApplication LicenseFile="..\LICENSE"
-                                              Theme="hyperlinkLicense"
+      <bal:WixStandardBootstrapperApplication Theme="standard"
                                               SuppressOptionsUI="no"
                                               ShowVersion="yes" />
     </BootstrapperApplication>
@@ -23,7 +22,6 @@
                          Result="exists" />
 
     <Chain>
-<?if $(var.UseLocalCoreTempPayload) = 1 ?>
       <ExePackage Id="CoreTemp"
                   DisplayName="Core Temp"
                   PerMachine="yes"
@@ -33,19 +31,6 @@
                   DetectCondition="CoreTempRegKeyExists = 1"
                   InstallCondition="CoreTempRegKeyExists &lt;&gt; 1"
                   Vital="yes" />
-<?else?>
-      <ExePackage Id="CoreTemp"
-                  DisplayName="Core Temp"
-                  PerMachine="yes"
-                  Permanent="yes"
-                  Compressed="no"
-                  DownloadUrl="$(var.CoreTempDownloadUrl)"
-                  Name="CoreTempSetup.exe"
-                  InstallArguments="/VERYSILENT /NORESTART"
-                  DetectCondition="CoreTempRegKeyExists = 1"
-                  InstallCondition="CoreTempRegKeyExists &lt;&gt; 1"
-                  Vital="yes" />
-<?endif?>
 
       <MsiPackage Id="CheckMechanicMsi"
                   SourceFile="$(var.MsiPath)"
