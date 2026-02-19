@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
@@ -14,16 +15,21 @@ using Microsoft.Win32;
 
 namespace CheckMechanic.Desktop;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(1.5) };
     private readonly DispatcherTimer _timer;
+
+    // --- Commit A: polling concurrency guard ---
+    private readonly SemaphoreSlim _pollGate = new(1, 1);
+
     private readonly Queue<double?> _tempHistory = new();
     private readonly Queue<double?> _cpuHistory = new();
     private readonly Queue<double?> _memHistory = new();
+    private readonly Queue<double?> _gpuHistory = new();
     private readonly Queue<double?> _diskHistory = new();
     private readonly Queue<double?> _netHistory = new();
     private readonly List<int> _localScoreHistory = new();
@@ -32,8 +38,28 @@ public partial class MainWindow : Window
     private string _lastProfileJson = "{}";
     private int _pollCount;
     private bool _optInConsent;
+    private bool _closeCoreTempOnExitConsent = true;
     private int _latestPerfScore;
     private string _latestPerfGrade = "N/A";
+
+    // --- Commit C: redraw suppression ---
+    private int? _lastUiHash;
+
+    // --- Commit B: INotifyPropertyChanged ---
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    /// <summary>
+    /// まとめて更新通知（WPFは propertyName=null/empty を “全部変わった” 扱いします）
+    /// </summary>
+    private void NotifyAll()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+    }
 
     public string CpuTemperatureText { get; set; } = "未取得";
     public string CpuKpiText { get; set; } = "--";
@@ -42,8 +68,14 @@ public partial class MainWindow : Window
     public string MemoryText { get; set; } = "未取得";
     public string MemoryKpiText { get; set; } = "--";
     public string MemorySubText { get; set; } = "--";
+    public string GpuText { get; set; } = "N/A";
+    public string GpuKpiText { get; set; } = "--";
+    public string GpuSubText { get; set; } = "--";
     public string DiskText { get; set; } = "未取得";
     public string NetText { get; set; } = "未取得";
+    public string NetMetaText { get; set; } = "adapter: -";
+    public string BatteryText { get; set; } = "N/A";
+    public string LastUpdateText { get; set; } = "--";
     public string PerfScoreText { get; set; } = "-- (N/A)";
     public string PerfSummaryText { get; set; } = "総合状態: --";
     public string StatusText { get; set; } = "⚠ 起動中";
@@ -54,48 +86,92 @@ public partial class MainWindow : Window
     public string SetupInstructionsText { get; set; } = "Core Temp を起動し、Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP) を ON にして「再チェック」を実行してください。";
     public string MainFeatureText { get; set; } = "制限モード: 主要機能は利用できません。診断情報を確認してください。";
     public string DiagnosticSensorsText { get; set; } = "(未取得)";
+    public string DiagnosticTelemetryText { get; set; } = "(未取得)";
+    public string ProviderErrorsText { get; set; } = "(none)";
     public string ProfileText { get; set; } = "(未取得)";
     public string RankingProfileText { get; set; } = "Opt-in をONにするとカテゴリを生成します。";
     public string TempChartData { get; set; } = string.Empty;
     public string CpuChartData { get; set; } = string.Empty;
     public string MemChartData { get; set; } = string.Empty;
+    public string GpuChartData { get; set; } = string.Empty;
+    public string DiskChartData { get; set; } = string.Empty;
+    public string NetChartData { get; set; } = string.Empty;
     public ObservableCollection<ChartTick> TempChartTicks { get; } = new();
     public ObservableCollection<ChartTick> CpuChartTicks { get; } = new();
     public ObservableCollection<ChartTick> MemChartTicks { get; } = new();
+    public ObservableCollection<ChartTick> GpuChartTicks { get; } = new();
+    public ObservableCollection<ChartTick> DiskChartTicks { get; } = new();
+    public ObservableCollection<ChartTick> NetChartTicks { get; } = new();
     public double TempLatestPointX { get; set; }
     public double TempLatestPointY { get; set; }
     public double CpuLatestPointX { get; set; }
     public double CpuLatestPointY { get; set; }
     public double MemLatestPointX { get; set; }
     public double MemLatestPointY { get; set; }
+    public double GpuLatestPointX { get; set; }
+    public double GpuLatestPointY { get; set; }
+    public double DiskLatestPointX { get; set; }
+    public double DiskLatestPointY { get; set; }
+    public double NetLatestPointX { get; set; }
+    public double NetLatestPointY { get; set; }
     public Visibility TempLatestPointVisibility { get; set; } = Visibility.Collapsed;
     public Visibility CpuLatestPointVisibility { get; set; } = Visibility.Collapsed;
     public Visibility MemLatestPointVisibility { get; set; } = Visibility.Collapsed;
+    public Visibility GpuLatestPointVisibility { get; set; } = Visibility.Collapsed;
+    public Visibility DiskLatestPointVisibility { get; set; } = Visibility.Collapsed;
+    public Visibility NetLatestPointVisibility { get; set; } = Visibility.Collapsed;
     public string TempRingArcData { get; set; } = string.Empty;
     public string TempRingCenterText { get; set; } = "--";
     public string TempLatestText { get; set; } = "--";
     public string TempMin60Text { get; set; } = "--";
     public string TempMax60Text { get; set; } = "--";
     public string TempSourceText { get; set; } = "source: unavailable";
+    public string TempSourceTooltipText { get; set; } = "source: unavailable";
+    public string NetDetailTooltipText { get; set; } = string.Empty;
     public string TempStatsText { get; set; } = "Latest -- / Min -- / Max --";
     public string CpuLatestText { get; set; } = "--";
     public string CpuAvg60Text { get; set; } = "--";
     public string MemLatestText { get; set; } = "--";
+    public string GpuLatestText { get; set; } = "--";
+    public string DiskLatestText { get; set; } = "--";
+    public string NetLatestText { get; set; } = "--";
     public string MemoryAvailableText { get; set; } = "--";
     public double CpuUtilizationValue { get; set; }
     public double MemoryUtilizationValue { get; set; }
+    public double GpuUtilizationValue { get; set; }
     public double ScoreCpuValue { get; set; }
     public double ScoreMemValue { get; set; }
     public double ScoreDiskValue { get; set; }
     public double ScoreNetValue { get; set; }
     public double ScoreTempValue { get; set; }
+    public double ScoreGpuValue { get; set; }
     public string ScoreCpuText { get; set; } = "--";
     public string ScoreMemText { get; set; } = "--";
     public string ScoreDiskText { get; set; } = "--";
     public string ScoreNetText { get; set; } = "--";
     public string ScoreTempText { get; set; } = "--";
+    public string ScoreGpuText { get; set; } = "--";
+    public string ScoreCpuReason { get; set; } = "-";
+    public string ScoreMemReason { get; set; } = "-";
+    public string ScoreDiskReason { get; set; } = "-";
+    public string ScoreNetReason { get; set; } = "-";
+    public string ScoreTempReason { get; set; } = "-";
+    public string ScoreGpuReason { get; set; } = "-";
+    public string RadarGrid100Points { get; set; } = string.Empty;
+    public string RadarGrid80Points { get; set; } = string.Empty;
+    public string RadarGrid60Points { get; set; } = string.Empty;
+    public string RadarGrid40Points { get; set; } = string.Empty;
+    public string RadarGrid20Points { get; set; } = string.Empty;
+    public string RadarScorePoints { get; set; } = string.Empty;
+    public string RadarCpuLabel { get; set; } = "CPU --";
+    public string RadarMemLabel { get; set; } = "Memory --";
+    public string RadarDiskLabel { get; set; } = "Disk --";
+    public string RadarNetLabel { get; set; } = "Network --";
+    public string RadarThermalLabel { get; set; } = "Thermal --";
+    public string RadarGpuLabel { get; set; } = "GPU --";
+    public ObservableCollection<string> ScoreInsights { get; } = new();
     public Visibility RestrictionVisibility { get; set; } = Visibility.Visible;
-    public string DiagnosticsSummaryText { get; set; } = "errors:0 / provider:- / updated:-";
+    public string DiagnosticsSummaryText { get; set; } = "errors:0 / provider:-";
     public string LocalRankingText { get; set; } = "ローカル履歴: N/A";
 
     public string ProfileOsMajor { get; set; } = "-";
@@ -110,7 +186,10 @@ public partial class MainWindow : Window
     public string ProfileStorageText { get; set; } = "-";
     public string ProfileDeviceClass { get; set; } = "-";
     public string ProfileTempProvider { get; set; } = "-";
-    public bool CloseCoreTempOnExitConsent { get; set; }
+    public string ProfileMachineVendor { get; set; } = "-";
+    public string ProfileMachineModel { get; set; } = "-";
+    public string ProfileGpuDriverVersion { get; set; } = "-";
+    public string ProfileUptimeText { get; set; } = "-";
     public ObservableCollection<string> Logs { get; } = new();
 
     public bool OptInConsent
@@ -118,10 +197,33 @@ public partial class MainWindow : Window
         get => _optInConsent;
         set
         {
+            if (_optInConsent == value)
+            {
+                return;
+            }
+
             _optInConsent = value;
+            OnPropertyChanged(nameof(OptInConsent));
             UpdateRankingPreview();
             UpdateLocalRankingText();
-            RefreshBindings();
+            RefreshBindings(force: true);
+        }
+    }
+
+    public bool CloseCoreTempOnExitConsent
+    {
+        get => _closeCoreTempOnExitConsent;
+        set
+        {
+            if (_closeCoreTempOnExitConsent == value)
+            {
+                return;
+            }
+
+            _closeCoreTempOnExitConsent = value;
+            OnPropertyChanged(nameof(CloseCoreTempOnExitConsent));
+            SaveUiSettings();
+            RefreshBindings(force: true);
         }
     }
 
@@ -129,18 +231,44 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = this;
+        InitializeRadarGrid();
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
-        _timer.Tick += async (_, _) => await PollAllAsync();
+
+        // --- Commit A: avoid overlapping polling calls ---
+        _timer.Tick += OnTimerTick;
 
         Loaded += async (_, _) => await InitializeAsync();
         Closing += MainWindow_OnClosing;
     }
 
+    // --- Commit A: guarded tick handler (no overlap) ---
+    private async void OnTimerTick(object? sender, EventArgs e)
+    {
+        if (!_pollGate.Wait(0))
+        {
+            return;
+        }
+
+        try
+        {
+            await PollAllAsync();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _pollGate.Release();
+        }
+    }
+
     private async Task InitializeAsync()
     {
+        LoadUiSettings();
         LoadLocalScoreHistory();
         await EnsureHelperAvailableAsync();
+
         await PollAllAsync(forceProfile: true);
         await RefreshDiagnosticsAsync();
         _timer.Start();
@@ -251,26 +379,61 @@ public partial class MainWindow : Window
             CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
             CpuUtilizationValue = payload.Cpu.UtilPercent is double cpuVal ? Math.Clamp(cpuVal, 0, 100) : 0;
             CpuKpiText = payload.Cpu.UtilPercent is double cpuNow ? $"{cpuNow:F1}%" : "--";
+
             MemoryText = BuildMemoryText(payload.Memory);
             MemoryUtilizationValue = payload.Memory.UtilPercent is double memVal ? Math.Clamp(memVal, 0, 100) : 0;
             MemoryAvailableText = BuildMemoryAvailableText(payload.Memory);
             MemoryKpiText = BuildMemoryKpiText(payload.Memory);
             MemorySubText = payload.Memory.UtilPercent is double memNow ? $"({memNow:F1}%) / available {MemoryAvailableText}" : $"available {MemoryAvailableText}";
+
+            GpuKpiText = payload.Gpu.UtilPercent is double gpuNow ? $"{gpuNow:F1}%" : "N/A";
+            GpuUtilizationValue = payload.Gpu.UtilPercent is double gpuVal ? Math.Clamp(gpuVal, 0, 100) : 0;
+            GpuText = payload.Gpu.Name ?? "N/A";
+            GpuSubText = BuildGpuSubText(payload.Gpu);
+
             DiskText = $"R {FormatRate(payload.Disk.ReadBps)} / W {FormatRate(payload.Disk.WriteBps)}";
-            NetText = $"↓ {FormatRate(payload.Net.RecvBps)} / ↑ {FormatRate(payload.Net.SentBps)}";
+            if (payload.Disk.TotalGb.HasValue || payload.Disk.FreeGb.HasValue)
+            {
+                DiskText += $"  |  {payload.Disk.FreeGb?.ToString("F0") ?? "?"}/{payload.Disk.TotalGb?.ToString("F0") ?? "?"} GB free";
+            }
+
+            NetText = $"↓ {FormatRate(payload.Net.RecvBps)}  ↑ {FormatRate(payload.Net.SentBps)}";
+            if (!string.IsNullOrWhiteSpace(payload.Net.ActiveAdapterName))
+            {
+                var link = payload.Net.LinkSpeedMbps.HasValue
+                    ? payload.Net.LinkSpeedMbps >= 1000
+                        ? $"{payload.Net.LinkSpeedMbps / 1000d:F1} Gbps"
+                        : $"{payload.Net.LinkSpeedMbps:F0} Mbps"
+                    : "n/a";
+                NetMetaText = $"{ShortAdapterName(payload.Net.ActiveAdapterName)} • {link}";
+                NetDetailTooltipText = $"{payload.Net.ActiveAdapterName} • {link}";
+            }
+            else
+            {
+                NetMetaText = "adapter: unavailable";
+                NetDetailTooltipText = string.Empty;
+            }
+
+            BatteryText = BuildBatteryText(payload.Battery);
+
             CpuLatestText = payload.Cpu.UtilPercent is double cu ? $"{cu:F1}%" : "--";
             MemLatestText = payload.Memory.UtilPercent is double mu ? $"{mu:F1}%" : "--";
+            GpuLatestText = payload.Gpu.UtilPercent is double gu ? $"{gu:F1}%" : "N/A";
+            DiskLatestText = FormatRate((payload.Disk.ReadBps ?? 0) + (payload.Disk.WriteBps ?? 0));
+            NetLatestText = FormatRate((payload.Net.RecvBps ?? 0) + (payload.Net.SentBps ?? 0));
+
             TempSourceText = $"source: {payload.Cpu.ProviderUsed ?? payload.Cpu.Source ?? "unavailable"}";
+            TempSourceTooltipText = TempSourceText;
 
             if (payload.Cpu.TempC is double temp)
             {
                 CpuTemperatureText = $"{temp:F1} °C";
                 TempLatestText = $"{temp:F1}°C";
                 TempRingCenterText = $"{temp:F0}";
-                TempRingArcData = BuildRingArcPath(temp, 30, 100, 104, 12);
+                TempRingArcData = BuildRingArcPath(temp, 30, 100, 74, 8);
                 SetStatus("✅ OK");
                 SetRestrictedMode(false, string.Empty, string.Empty);
-                AddLog($"temp={temp:F1}C util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider={payload.Cpu.ProviderUsed ?? "unknown"} label={payload.Cpu.Label}");
+                AddLog($"temp={temp:F1}C util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider={payload.Cpu.ProviderUsed ?? "unknown"} label={payload.Cpu.Label} clock={payload.Cpu.ClockMhz?.ToString("F0") ?? "n/a"}MHz");
             }
             else
             {
@@ -284,6 +447,7 @@ public partial class MainWindow : Window
                     true,
                     "必須要件未達: 温度取得が必要です。管理者で再試行してください。",
                     BuildSetupInstructions(payload.Cpu.ProviderErrors));
+
                 var providerErrors = payload.Cpu.ProviderErrors?.Count > 0 ? string.Join(",", payload.Cpu.ProviderErrors) : "none";
                 AddLog($"temperature unavailable: code={payload.Cpu.ErrorCode ?? "unknown"} detail={payload.Cpu.Error ?? "unknown"} util={payload.Cpu.UtilPercent?.ToString("F1") ?? "n/a"} provider_errors={providerErrors}");
             }
@@ -291,20 +455,32 @@ public partial class MainWindow : Window
             double? diskTotal = (payload.Disk.ReadBps.HasValue || payload.Disk.WriteBps.HasValue)
                 ? payload.Disk.ReadBps.GetValueOrDefault() + payload.Disk.WriteBps.GetValueOrDefault()
                 : null;
+
             double? netTotal = (payload.Net.RecvBps.HasValue || payload.Net.SentBps.HasValue)
                 ? payload.Net.RecvBps.GetValueOrDefault() + payload.Net.SentBps.GetValueOrDefault()
                 : null;
+
             AppendHistory(
                 payload.Cpu.TempC,
                 payload.Cpu.UtilPercent,
                 payload.Memory.UtilPercent,
+                payload.Gpu.UtilPercent,
                 diskTotal,
                 netTotal);
+
             UpdateScore(payload);
             RefreshChartData();
+
             TempStatsText = $"Latest {TempLatestText} / Min {TempMin60Text} / Max {TempMax60Text}";
             CpuAvgText = $"avg(60s): {CpuAvg60Text}";
+
             DiagnosticsSummaryText = BuildDiagnosticsSummary(payload);
+            ProviderErrorsText = payload.Cpu.ProviderErrors?.Count > 0
+                ? string.Join(Environment.NewLine, payload.Cpu.ProviderErrors)
+                : "(none)";
+
+            DiagnosticTelemetryText = PrettyJson(_lastTelemetryJson);
+
             RefreshBindings();
         }
         catch (HttpRequestException ex)
@@ -317,6 +493,7 @@ public partial class MainWindow : Window
             SetStatus("❌ SensorHelper 未接続");
             SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
             AddLog(SanitizeError(ex.Message));
+            ProviderErrorsText = "(helper_unavailable)";
             RefreshBindings();
         }
         catch
@@ -329,6 +506,7 @@ public partial class MainWindow : Window
             SetStatus("❌ 取得失敗");
             SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
             AddLog("telemetry request failed");
+            ProviderErrorsText = "(telemetry_request_failed)";
             RefreshBindings();
         }
     }
@@ -342,20 +520,24 @@ public partial class MainWindow : Window
             {
                 ProfileText = $"{{\"error\":\"HTTP {(int)response.StatusCode}\"}}";
                 UpdateRankingPreview();
+                RefreshBindings();
                 return;
             }
 
             var raw = await response.Content.ReadAsStringAsync();
             _lastProfileJson = raw;
             ProfileText = PrettyJson(raw);
+
             var profile = JsonSerializer.Deserialize<SystemProfileDto>(raw, JsonOptions) ?? new SystemProfileDto();
             ProfileOsMajor = profile.OsMajor ?? "-";
             ProfileOsBuildBucket = profile.OsBuildBucket ?? "-";
             ProfileOsText = $"{ProfileOsMajor} / {ProfileOsBuildBucket}";
             ProfileCpuBrand = profile.CpuBrand ?? "-";
+
             var logical = profile.LogicalCores?.ToString() ?? "-";
             var physical = profile.PhysicalCores?.ToString() ?? "-";
             ProfileCoreText = $"{physical}C / {logical}T";
+
             ProfileMemoryBucket = profile.MemoryTotalGbBucket ?? "-";
             ProfileGpuName = profile.GpuName ?? "-";
             ProfileStorageType = profile.StoragePrimaryType ?? "-";
@@ -363,7 +545,13 @@ public partial class MainWindow : Window
             ProfileStorageText = $"{ProfileStorageType} / {ProfileStorageBucket}";
             ProfileDeviceClass = profile.DeviceClass ?? "-";
             ProfileTempProvider = profile.TempProvider ?? "-";
+            ProfileMachineVendor = profile.MachineVendor ?? "-";
+            ProfileMachineModel = profile.MachineModel ?? "-";
+            ProfileGpuDriverVersion = profile.GpuDriverVersion ?? "-";
+            ProfileUptimeText = profile.UptimeHours.HasValue ? $"{profile.UptimeHours.Value:F1} h" : "-";
+
             UpdateRankingPreview();
+            RefreshBindings();
         }
         catch
         {
@@ -380,7 +568,13 @@ public partial class MainWindow : Window
             ProfileStorageText = "-";
             ProfileDeviceClass = "-";
             ProfileTempProvider = "-";
+            ProfileMachineVendor = "-";
+            ProfileMachineModel = "-";
+            ProfileGpuDriverVersion = "-";
+            ProfileUptimeText = "-";
+
             UpdateRankingPreview();
+            RefreshBindings();
         }
     }
 
@@ -416,6 +610,7 @@ public partial class MainWindow : Window
     {
         var cpuHistory = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
         var memHistory = _memHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        var gpuHistory = _gpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
 
         var result = PerfScoreCalculator.Calculate(
             payload.Cpu.TempC,
@@ -433,11 +628,22 @@ public partial class MainWindow : Window
             ScoreDiskValue = 0;
             ScoreNetValue = 0;
             ScoreTempValue = 0;
+            ScoreGpuValue = 0;
             ScoreCpuText = "--";
             ScoreMemText = "--";
             ScoreDiskText = "--";
             ScoreNetText = "--";
             ScoreTempText = "--";
+            ScoreGpuText = "--";
+            ScoreCpuReason = "温度要件未達";
+            ScoreMemReason = "温度要件未達";
+            ScoreDiskReason = "温度要件未達";
+            ScoreNetReason = "温度要件未達";
+            ScoreTempReason = "温度要件未達";
+            ScoreGpuReason = "温度要件未達";
+            UpdateRadar(new[] { 0d, 0d, 0d, 0d, 0d, 0d });
+            ScoreInsights.Clear();
+            ScoreInsights.Add("温度未取得のためスコア評価を停止しています。");
             return;
         }
 
@@ -451,21 +657,43 @@ public partial class MainWindow : Window
         ScoreDiskValue = Math.Round(result.DiskHeadroom ?? 0, 1);
         ScoreNetValue = Math.Round(result.NetworkHeadroom ?? 0, 1);
         ScoreTempValue = Math.Round(100 - result.TempPenalty * 5, 1);
+
+        var gpuHeadroom = gpuHistory.Count > 0 ? Math.Clamp(100 - gpuHistory.Average(), 0, 100) : (double?)null;
+        ScoreGpuValue = Math.Round(gpuHeadroom ?? 0, 1);
+
         ScoreCpuText = $"{ScoreCpuValue:F0}";
         ScoreMemText = $"{ScoreMemValue:F0}";
         ScoreDiskText = result.DiskHeadroom.HasValue ? $"{ScoreDiskValue:F0}" : "N/A";
         ScoreNetText = result.NetworkHeadroom.HasValue ? $"{ScoreNetValue:F0}" : "N/A";
         ScoreTempText = $"{ScoreTempValue:F0}";
+        ScoreGpuText = gpuHeadroom.HasValue ? $"{ScoreGpuValue:F0}" : "N/A";
+
+        ScoreCpuReason = ScoreCpuValue < 40 ? "CPU負荷が高い" : "CPU余力あり";
+        ScoreMemReason = ScoreMemValue < 40 ? "メモリ使用率が高い" : "メモリ余力あり";
+        ScoreDiskReason = result.DiskHeadroom.HasValue
+            ? (ScoreDiskValue < 40 ? "I/O負荷が高い" : "I/O余力あり")
+            : "ディスク指標なし";
+        ScoreNetReason = result.NetworkHeadroom.HasValue
+            ? (ScoreNetValue < 40 ? "ネットワーク負荷が高い" : "ネットワーク余力あり")
+            : "ネットワーク指標なし";
+        ScoreTempReason = result.TempPenalty > 0 ? $"温度ペナルティ {result.TempPenalty:F0}" : "温度ペナルティなし";
+        ScoreGpuReason = gpuHeadroom.HasValue
+            ? (ScoreGpuValue < 40 ? "GPU負荷が高い" : "GPU余力あり")
+            : "GPU指標なし";
+
+        UpdateRadar(new[] { ScoreCpuValue, ScoreMemValue, ScoreDiskValue, ScoreNetValue, ScoreTempValue, ScoreGpuValue });
+        UpdateScoreInsights();
 
         PersistLocalScoreIfOptIn(result.Score);
         UpdateLocalRankingText();
     }
 
-    private void AppendHistory(double? temp, double? cpu, double? mem, double? diskTotalBps, double? netTotalBps)
+    private void AppendHistory(double? temp, double? cpu, double? mem, double? gpu, double? diskTotalBps, double? netTotalBps)
     {
         AppendWithLimit(_tempHistory, temp, 60);
         AppendWithLimit(_cpuHistory, cpu, 60);
         AppendWithLimit(_memHistory, mem, 60);
+        AppendWithLimit(_gpuHistory, gpu, 60);
         AppendWithLimit(_diskHistory, diskTotalBps, 60);
         AppendWithLimit(_netHistory, netTotalBps, 60);
     }
@@ -481,9 +709,9 @@ public partial class MainWindow : Window
 
     private void RefreshChartData()
     {
-        const double plotWidth = 720;
+        const double plotWidth = 288;
         const double plotHeight = 180;
-        const int ticks = 5;
+        const int ticks = 4;
 
         var tempValues = _tempHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
         var tempMinRaw = tempValues.Count > 0 ? tempValues.Min() : 30;
@@ -521,10 +749,38 @@ public partial class MainWindow : Window
         MemLatestPointY = my;
         MemLatestPointVisibility = mv;
 
+        GpuChartData = BuildSparklinePath(_gpuHistory, plotWidth, plotHeight, 0, 100);
+        UpdateTicks(GpuChartTicks, ticks, 0, 100, plotHeight, "%", 0);
+        UpdateLatestPoint(_gpuHistory, plotWidth, plotHeight, 0, 100, out var gx, out var gy, out var gv);
+        GpuLatestPointX = gx;
+        GpuLatestPointY = gy;
+        GpuLatestPointVisibility = gv;
+
+        var diskValues = _diskHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        var diskMax = Math.Max(1d, diskValues.Count > 0 ? diskValues.Max() : 1d);
+        DiskChartData = BuildSparklinePath(_diskHistory, plotWidth, plotHeight, 0, diskMax);
+        UpdateTicks(DiskChartTicks, ticks, 0, diskMax, plotHeight, "", 0);
+        UpdateLatestPoint(_diskHistory, plotWidth, plotHeight, 0, diskMax, out var dx, out var dy, out var dv);
+        DiskLatestPointX = dx;
+        DiskLatestPointY = dy;
+        DiskLatestPointVisibility = dv;
+
+        var netValues = _netHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        var netMax = Math.Max(1d, netValues.Count > 0 ? netValues.Max() : 1d);
+        NetChartData = BuildSparklinePath(_netHistory, plotWidth, plotHeight, 0, netMax);
+        UpdateTicks(NetChartTicks, ticks, 0, netMax, plotHeight, "", 0);
+        UpdateLatestPoint(_netHistory, plotWidth, plotHeight, 0, netMax, out var nx, out var ny, out var nv);
+        NetLatestPointX = nx;
+        NetLatestPointY = ny;
+        NetLatestPointVisibility = nv;
+
         var cpuValues = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
         CpuAvg60Text = cpuValues.Count > 0 ? $"{cpuValues.Average():F1}%" : "--";
         CpuLatestText = _cpuHistory.LastOrDefault(x => x.HasValue) is double lastCpu ? $"{lastCpu:F1}%" : "N/A";
         MemLatestText = _memHistory.LastOrDefault(x => x.HasValue) is double lastMem ? $"{lastMem:F1}%" : "N/A";
+        GpuLatestText = _gpuHistory.LastOrDefault(x => x.HasValue) is double lastGpu ? $"{lastGpu:F1}%" : "N/A";
+        DiskLatestText = _diskHistory.LastOrDefault(x => x.HasValue) is double lastDisk ? FormatRate(lastDisk) : "N/A";
+        NetLatestText = _netHistory.LastOrDefault(x => x.HasValue) is double lastNet ? FormatRate(lastNet) : "N/A";
     }
 
     private static void UpdateTicks(ObservableCollection<ChartTick> target, int ticks, double min, double max, double plotHeight, string unit, int decimals)
@@ -535,7 +791,15 @@ public partial class MainWindow : Window
             var ratio = (double)i / (ticks - 1);
             var value = max - ((max - min) * ratio);
             var y = ratio * plotHeight;
-            var label = decimals > 0 ? $"{value:F1}{unit}" : $"{value:F0}{unit}";
+            string label;
+            if (string.IsNullOrWhiteSpace(unit))
+            {
+                label = FormatRate(value);
+            }
+            else
+            {
+                label = decimals > 0 ? $"{value:F1}{unit}" : $"{value:F0}{unit}";
+            }
             target.Add(new ChartTick { Y = y - 8, Label = label });
         }
     }
@@ -677,11 +941,155 @@ public partial class MainWindow : Window
         return $"{used:F1} / {total:F1} GB";
     }
 
+    private static string BuildGpuSubText(GpuTelemetry gpu)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(gpu.Vendor))
+        {
+            parts.Add(gpu.Vendor);
+        }
+        if (gpu.VramUsedMb.HasValue || gpu.VramTotalMb.HasValue)
+        {
+            var used = gpu.VramUsedMb.HasValue ? $"{gpu.VramUsedMb.Value / 1024d:F1}GB" : "?";
+            var total = gpu.VramTotalMb.HasValue ? $"{gpu.VramTotalMb.Value / 1024d:F1}GB" : "?";
+            parts.Add($"VRAM {used}/{total}");
+        }
+        if (gpu.TemperatureC.HasValue)
+        {
+            parts.Add($"{gpu.TemperatureC.Value:F1}°C");
+        }
+        if (!string.IsNullOrWhiteSpace(gpu.DriverVersion))
+        {
+            parts.Add($"drv {gpu.DriverVersion}");
+        }
+        if (gpu.CoreClockMhz.HasValue)
+        {
+            parts.Add($"core {gpu.CoreClockMhz.Value:F0}MHz");
+        }
+        if (gpu.MemoryClockMhz.HasValue)
+        {
+            parts.Add($"mem {gpu.MemoryClockMhz.Value:F}MHz");
+        }
+        return parts.Count == 0 ? "N/A" : string.Join(" / ", parts);
+    }
+
+    private static string BuildBatteryText(BatteryTelemetry battery)
+    {
+        if (!battery.Percent.HasValue && !battery.IsCharging.HasValue)
+        {
+            return "N/A";
+        }
+
+        var parts = new List<string>();
+        if (battery.Percent.HasValue)
+        {
+            parts.Add($"{battery.Percent.Value:F0}%");
+        }
+        if (battery.IsCharging.HasValue)
+        {
+            parts.Add(battery.IsCharging.Value ? "charging" : "discharging");
+        }
+        if (battery.DischargeW.HasValue)
+        {
+            parts.Add($"{battery.DischargeW.Value:F1}W");
+        }
+        return string.Join(" / ", parts);
+    }
+
+    // --- Commit C: time-dependent string removed to allow stable hashing ---
     private static string BuildDiagnosticsSummary(TelemetryResponse payload)
     {
         var provider = payload.Cpu.ProviderUsed ?? "none";
         var errors = payload.Cpu.ProviderErrors?.Count ?? 0;
-        return $"errors:{errors} / provider:{provider} / updated:{DateTime.Now:HH:mm:ss}";
+        return $"errors:{errors} / provider:{provider}";
+    }
+
+    private void InitializeRadarGrid()
+    {
+        RadarGrid100Points = BuildRadarPoints(new[] { 100d, 100d, 100d, 100d, 100d, 100d });
+        RadarGrid80Points = BuildRadarPoints(new[] { 80d, 80d, 80d, 80d, 80d, 80d });
+        RadarGrid60Points = BuildRadarPoints(new[] { 60d, 60d, 60d, 60d, 60d, 60d });
+        RadarGrid40Points = BuildRadarPoints(new[] { 40d, 40d, 40d, 40d, 40d, 40d });
+        RadarGrid20Points = BuildRadarPoints(new[] { 20d, 20d, 20d, 20d, 20d, 20d });
+        RadarScorePoints = BuildRadarPoints(new[] { 0d, 0d, 0d, 0d, 0d, 0d });
+    }
+
+    private void UpdateRadar(IReadOnlyList<double> values)
+    {
+        RadarScorePoints = BuildRadarPoints(values);
+        RadarCpuLabel = $"CPU {values[0]:F0}";
+        RadarMemLabel = $"Memory {values[1]:F0}";
+        RadarDiskLabel = $"Disk {values[2]:F0}";
+        RadarNetLabel = $"Network {values[3]:F0}";
+        RadarThermalLabel = $"Thermal {values[4]:F0}";
+        RadarGpuLabel = $"GPU {values[5]:F0}";
+    }
+
+    private static string BuildRadarPoints(IReadOnlyList<double> scores)
+    {
+        const double cx = 140;
+        const double cy = 115;
+        const double r = 78;
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < 6; i++)
+        {
+            var ratio = Math.Clamp(scores[i] / 100.0, 0, 1);
+            var angle = ((Math.PI * 2) / 6 * i) - (Math.PI / 2);
+            var x = cx + (Math.Cos(angle) * r * ratio);
+            var y = cy + (Math.Sin(angle) * r * ratio);
+            if (i > 0)
+            {
+                sb.Append(' ');
+            }
+            sb.Append($"{x:F1},{y:F1}");
+        }
+        return sb.ToString();
+    }
+
+    private void UpdateScoreInsights()
+    {
+        var candidates = new List<(double score, string text)>
+        {
+            (ScoreCpuValue, ScoreCpuReason),
+            (ScoreMemValue, ScoreMemReason),
+            (ScoreDiskValue, ScoreDiskReason),
+            (ScoreNetValue, ScoreNetReason),
+            (ScoreTempValue, ScoreTempReason),
+            (ScoreGpuValue, ScoreGpuReason),
+        };
+
+        var alerts = candidates
+            .Where(x => x.score < 40)
+            .OrderBy(x => x.score)
+            .Select(x => x.text)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .Take(3)
+            .ToList();
+
+        ScoreInsights.Clear();
+        if (alerts.Count == 0)
+        {
+            ScoreInsights.Add("重大なボトルネックは検出されていません");
+            return;
+        }
+
+        foreach (var alert in alerts)
+        {
+            ScoreInsights.Add(alert);
+        }
+    }
+
+    private static string ShortAdapterName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return name;
+        }
+
+        return name.Replace(" (Hyper-V firewall)", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("vEthernet (WSL", "vEthernet (WSL", StringComparison.OrdinalIgnoreCase)
+            .Trim();
     }
 
     public sealed class ChartTick
@@ -692,9 +1100,65 @@ public partial class MainWindow : Window
 
     private static string GetHistoryFilePath()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".checkmechanic");
+        var dir = GetAppDataDirectory();
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "perf_history.json");
+    }
+
+    private static string GetUiSettingsFilePath()
+    {
+        var dir = GetAppDataDirectory();
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "desktop_ui_settings.json");
+    }
+
+    private static string GetAppDataDirectory()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(baseDir, "CheckMechanic");
+        }
+
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".checkmechanic");
+    }
+
+    private void LoadUiSettings()
+    {
+        try
+        {
+            var path = GetUiSettingsFilePath();
+            if (!File.Exists(path))
+            {
+                _closeCoreTempOnExitConsent = true;
+                return;
+            }
+
+            var json = File.ReadAllText(path);
+            var settings = JsonSerializer.Deserialize<UiSettings>(json, JsonOptions);
+            _closeCoreTempOnExitConsent = settings?.CloseCoreTempOnExit ?? true;
+        }
+        catch
+        {
+            _closeCoreTempOnExitConsent = true;
+        }
+    }
+
+    private void SaveUiSettings()
+    {
+        try
+        {
+            var path = GetUiSettingsFilePath();
+            var settings = new UiSettings
+            {
+                CloseCoreTempOnExit = _closeCoreTempOnExitConsent,
+            };
+            File.WriteAllText(path, JsonSerializer.Serialize(settings, JsonOptions));
+        }
+        catch
+        {
+            AddLog("ui settings write failed");
+        }
     }
 
     private void LoadLocalScoreHistory()
@@ -874,6 +1338,7 @@ public partial class MainWindow : Window
         SetStatus("⚠ Core Temp 起動/前面化済み。再チェックしてください。");
         await Task.Delay(700);
         await RefreshDiagnosticsAsync();
+        RefreshBindings(force: true);
     }
 
     private async void RecheckButton_OnClick(object sender, RoutedEventArgs e)
@@ -881,6 +1346,7 @@ public partial class MainWindow : Window
         await EnsureHelperAvailableAsync();
         await PollAllAsync(forceProfile: true);
         await RefreshDiagnosticsAsync();
+        RefreshBindings(force: true);
     }
 
     private async void RestartHelperButton_OnClick(object sender, RoutedEventArgs e)
@@ -889,6 +1355,7 @@ public partial class MainWindow : Window
         await Task.Delay(300);
         await EnsureHelperAvailableAsync();
         await PollAllAsync(forceProfile: true);
+        RefreshBindings(force: true);
     }
 
     private async void RestartHelperAsAdminButton_OnClick(object sender, RoutedEventArgs e)
@@ -897,25 +1364,26 @@ public partial class MainWindow : Window
         await Task.Delay(300);
         if (!TryStartHelper(runAsAdmin: true))
         {
-            RefreshBindings();
+            RefreshBindings(force: true);
             return;
         }
 
         await Task.Delay(1200);
         await EnsureHelperAvailableAsync();
         await PollAllAsync(forceProfile: true);
+        RefreshBindings(force: true);
     }
 
     private async void RefreshDiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
     {
         await RefreshDiagnosticsAsync();
-        RefreshBindings();
+        RefreshBindings(force: true);
     }
 
     private async void RefreshProfileButton_OnClick(object sender, RoutedEventArgs e)
     {
         await RefreshProfileAsync();
-        RefreshBindings();
+        RefreshBindings(force: true);
     }
 
     private void MoreActionsButton_OnClick(object sender, RoutedEventArgs e)
@@ -968,7 +1436,7 @@ public partial class MainWindow : Window
             AddLog("diagnostics export failed");
         }
 
-        RefreshBindings();
+        RefreshBindings(force: true);
     }
 
     private void SetStatus(string text)
@@ -982,8 +1450,7 @@ public partial class MainWindow : Window
         }
         else if (text.Contains("必須要件未達", StringComparison.Ordinal) || text.Contains("温度取得不可", StringComparison.Ordinal))
         {
-            StatusBadgeText = "LOCKED";
-            StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(57, 30, 36));
+            StatusBadgeText = "LOCKED";   StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(57, 30, 36));
             StatusBadgeBorder = new SolidColorBrush(Color.FromRgb(147, 78, 91));
         }
         else if (text.Contains("❌", StringComparison.Ordinal))
@@ -998,7 +1465,6 @@ public partial class MainWindow : Window
             StatusBadgeBackground = new SolidColorBrush(Color.FromRgb(48, 42, 24));
             StatusBadgeBorder = new SolidColorBrush(Color.FromRgb(141, 122, 68));
         }
-        RefreshBindings();
     }
 
     private void SetRestrictedMode(bool restricted, string reason, string setupInstructions)
@@ -1034,6 +1500,8 @@ public partial class MainWindow : Window
         {
             AddLog($"log copy failed: {ex.GetType().Name}: {SanitizeError(ex.Message)}");
         }
+
+        RefreshBindings(force: true);
     }
 
     private void AddLog(string message)
@@ -1116,6 +1584,8 @@ public partial class MainWindow : Window
         {
             AddLog("helper terminate failed");
         }
+
+        RefreshBindings(force: true);
     }
 
     private static string BuildSetupInstructions(IReadOnlyList<string>? providerErrors)
@@ -1149,13 +1619,114 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RefreshBindings()
+    // --- Commit C: compute a stable hash fote (exclude LastUpdateText) ---
+    private int ComputeUiHash()
     {
-        Dispatcher.Invoke(() =>
+        var hc = new HashCode();
+
+        // top status + gating
+        hc.Add(StatusText);
+        hc.Add(StatusBadgeText);
+        hc.Add(RestrictionText);
+        hc.Add(SetupInstructionsText);
+        hc.Add(MainFeatureText);
+        hc.Add((int)RestrictionVisibility);
+
+        // key KPIs
+        hc.Add(CpuTemperatureText);
+        hc.Add(CpuUtilizationText);
+        hc.Add(CpuKpiText);
+        hc.Add(CpuAvgText);
+
+        hc.Add(MemoryText);
+        hc.Add(MemoryKpiText);
+        hc.Add(MemorySubText);
+        hc.Add(MemoryAvailableText);
+
+        hc.Add(GpuText);
+        hc.Add(GpuKpiText);
+        hc.Add(GpuSubText);
+
+        hc.Add(DiskText);
+        hc.Add(NetText);
+        hc.Add(NetMetaText);
+        hc.Add(NetDetailTooltipText);
+        hc.Add(BatteryText);
+
+        // score & radar
+        hc.Add(PerfScoreText);
+        hc.Add(PerfSummaryText);
+        hc.Add(ScoreCpuText);
+        hc.Add(ScoreMemText);
+        hc.Add(ScoreDiskText);
+        hc.Add(ScoreNetText);
+        hc.Add(ScoreTempText);
+        hc.Add(ScoreGpuText);
+        hc.Add(RadarScorePoints);
+        hc.Add(RadarCpuLabel);
+        hc.Add(RadarMemLabel);
+        hc.Add(RadarDiskLabel);
+        hc.Add(RadarNetLabel);
+        hc.Add(RadarThermalLabel);
+        hc.Add(RadarGpuLabel);
+
+        // chart (string paths are enough for change detection)
+        hc.Add(TempChartData);
+        hc.Add(CpuChartData);
+        hc.Add(MemChartData);
+        hc.Add(GpuChartData);
+        hc.Add(DiskChartData);
+        hc.Add(NetChartData);
+
+        // temp ring
+        hc.Add(TempRingArcData);
+        hc.Add(TempRingCenterText);
+        hc.Add(TempLatestText);
+        hc.Add(TempMin60Text);
+        hc.Add(TempMax60Text);
+        hc.Add(TempSourceText);
+        hc.Add(TempStatsText);
+
+        // diagnostics / profiles
+        hc.Add(DiagnosticsSummaryText);
+        hc.Add(ProviderErrorsText);
+        hc.Add(ProfileText);
+        hc.Add(RankingProfileText);
+        hc.Add(LocalRankingText);
+
+        // NOTE: LastUpdateText intentionally excluded to allow suppression
+        return hc.ToHashCode();
+    }
+
+    // --- Commit B/C: no DataContext reset. Notify only if state changed. ---
+    private void RefreshBindings(bool force = false)
+    {
+        if (!Dispatcher.CheckAccess())
         {
-            DataContext = null;
-            DataContext = this;
-        });
+            Dispatcher.Invoke(() => RefreshBindings(force));
+            return;
+        }
+
+        if (!force)
+        {
+            var current = ComputeUiHash();
+            if (_lastUiHash.HasValue && _lastUiHash.Value == current)
+            {
+                // no visible change -> skip rebind/re-render
+                return;
+            }
+
+            _lastUiHash = current;
+        }
+        else
+        {
+            _lastUiHash = null; // next non-forced refresh will re-evaluate anyway
+        }
+
+        // Update timestamp only when we actually render
+        LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
+
+        NotifyAll();
     }
 
     private Process? LaunchOrActivateCoreTemp()
@@ -1269,5 +1840,10 @@ public partial class MainWindow : Window
         catch
         {
         }
+    }
+
+    private sealed class UiSettings
+    {
+        public bool CloseCoreTempOnExit { get; set; } = true;
     }
 }

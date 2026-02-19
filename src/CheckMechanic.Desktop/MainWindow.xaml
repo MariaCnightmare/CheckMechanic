@@ -1,16 +1,24 @@
 <Window x:Class="CheckMechanic.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="CheckMechanic" Width="1366" Height="820" MinWidth="1280" MinHeight="720">
+        Title="CheckMechanic" Width="1366" Height="860" MinWidth="1280" MinHeight="720">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid Margin="24">
             <Grid.RowDefinitions>
-                <RowDefinition Height="88" />
-                <RowDefinition Height="132" />
-                <RowDefinition Height="92" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
+            <Border Grid.RowSpan="5"
+                    Background="{DynamicResource BackgroundPatternBrush}"
+                    Opacity="0.28"
+                    IsHitTestVisible="False"
+                    Panel.ZIndex="-1" />
+
+            <!-- Header -->
             <Border Grid.Row="0" Style="{DynamicResource CardStyle}" Padding="16" ClipToBounds="True">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -24,16 +32,36 @@
                         <TextBlock Text="Local Telemetry Dashboard" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" />
                     </StackPanel>
 
-                    <Border Grid.Column="1" Style="{DynamicResource StatusBadgeStyle}"
-                            HorizontalAlignment="Left" VerticalAlignment="Center"
-                            Background="{Binding StatusBadgeBackground}" BorderBrush="{Binding StatusBadgeBorder}">
+                    <Border Grid.Column="1"
+                            Style="{DynamicResource StatusBadgeStyle}"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Background="{Binding StatusBadgeBackground}"
+                            BorderBrush="{Binding StatusBadgeBorder}">
                         <TextBlock Text="{Binding StatusBadgeText}" FontWeight="SemiBold" />
                     </Border>
 
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <Button Content="再チェック" Width="112" Margin="0,0,8,0" Click="RecheckButton_OnClick" Background="{DynamicResource AccentBrush}" Foreground="#04120F" BorderBrush="{DynamicResource AccentBrush}" />
-                        <Button Content="Core Temp 起動/前面" Width="170" Margin="0,0,8,0" Click="LaunchOrActivateCoreTempButton_OnClick" />
-                        <Button x:Name="MoreActionsButton" Content="⋯" Width="44" Click="MoreActionsButton_OnClick">
+                    <WrapPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" ItemHeight="34">
+                        <Button Content="再チェック"
+                                Width="100"
+                                Margin="0,0,8,0"
+                                Click="RecheckButton_OnClick"
+                                Background="{DynamicResource AccentBrush}"
+                                Foreground="#04120F"
+                                BorderBrush="{DynamicResource AccentBrush}" />
+
+                        <Button Content="Core Temp 起動/前面"
+                                Width="156"
+                                Margin="0,0,8,0"
+                                Click="LaunchOrActivateCoreTempButton_OnClick" />
+
+                        <CheckBox Content="終了時に Core Temp も終了"
+                                  IsChecked="{Binding CloseCoreTempOnExitConsent}"
+                                  Margin="0,0,8,0"
+                                  VerticalAlignment="Center"
+                                  ToolTip="アプリ終了時に Core Temp を自動終了します（手動起動分も対象）" />
+
+                        <Button x:Name="MoreActionsButton" Content="⋯" Width="42" Click="MoreActionsButton_OnClick">
                             <Button.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="管理者で再試行" Click="RestartHelperAsAdminButton_OnClick" />
@@ -44,268 +72,902 @@
                                 </ContextMenu>
                             </Button.ContextMenu>
                         </Button>
-                    </StackPanel>
+                    </WrapPanel>
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="1" Margin="0,16,0,0">
+            <!-- Restriction / Setup -->
+            <Border Grid.Row="1"
+                    Style="{DynamicResource CardStyle}"
+                    Margin="0,16,0,0"
+                    Visibility="{Binding RestrictionVisibility}"
+                    BorderBrush="{DynamicResource DangerBrush}">
+                <StackPanel>
+                    <TextBlock Text="{Binding RestrictionText}" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}" />
+                    <TextBlock Text="{Binding SetupInstructionsText}" Style="{DynamicResource MetricSubStyle}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding MainFeatureText}" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- KPI Row -->
+            <Grid Grid.Row="2" Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="3*" />
-                    <ColumnDefinition Width="3*" />
-                    <ColumnDefinition Width="3*" />
-                    <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="2*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Style="{DynamicResource CardStyle}" Margin="0,0,12,0" ClipToBounds="True">
+                <Border Grid.Column="0" Style="{DynamicResource CardStyle}" Margin="0,0,10,0">
                     <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
                         <Grid Width="74" Height="74" VerticalAlignment="Center">
                             <Ellipse Stroke="{DynamicResource BorderBrush}" StrokeThickness="8" />
-                            <Path Data="{Binding TempRingArcData}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                            <Path Data="{Binding TempRingArcData}"
+                                  Stroke="{DynamicResource AccentBrush}"
+                                  StrokeThickness="8"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" />
                             <TextBlock Text="{Binding TempRingCenterText}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" />
                         </Grid>
+
                         <StackPanel Grid.Column="1" Margin="12,0,0,0">
                             <TextBlock Text="Temperature" Style="{DynamicResource MetricLabelStyle}" />
-                            <TextBlock Text="{Binding CpuTemperatureText}" Style="{DynamicResource GlowValueStyle}" FontSize="26" />
-                            <TextBlock Text="{Binding TempSourceText}" Style="{DynamicResource MetricSubStyle}" />
-                            <TextBlock Text="{Binding TempStatsText}" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding CpuTemperatureText}" Style="{DynamicResource GlowValueStyle}" />
+                            <TextBlock Text="{Binding TempStatsText}" Style="{DynamicResource MetricSubStyle}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <Border Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="4,0,8,0" ClipToBounds="True">
+                <Border Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="2,0,8,0">
                     <StackPanel>
-                        <TextBlock Text="CPU Util" Style="{DynamicResource MetricLabelStyle}" />
-                        <TextBlock Text="{Binding CpuKpiText}" Style="{DynamicResource MetricValueStyle}" FontSize="30" />
-                        <ProgressBar Height="8" Margin="0,10,0,0" Value="{Binding CpuUtilizationValue}" Maximum="100" Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource Surface2Brush}" />
+                        <TextBlock Text="CPU" Style="{DynamicResource MetricLabelStyle}" />
+                        <TextBlock Text="{Binding CpuKpiText}" Style="{DynamicResource MetricValueStyle}" />
+                        <ProgressBar Height="8"
+                                     Margin="0,10,0,0"
+                                     Value="{Binding CpuUtilizationValue}"
+                                     Maximum="100"
+                                     Foreground="{DynamicResource AccentBrush}"
+                                     Background="{DynamicResource Surface2Brush}" />
                         <TextBlock Text="{Binding CpuAvgText}" Style="{DynamicResource MetricSubStyle}" Margin="0,6,0,0" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="2" Style="{DynamicResource CardStyle}" Margin="8,0,4,0" ClipToBounds="True">
+                <Border Grid.Column="2" Style="{DynamicResource CardStyle}" Margin="4,0,6,0">
+                    <StackPanel>
+                        <TextBlock Text="GPU" Style="{DynamicResource MetricLabelStyle}" />
+                        <TextBlock Text="{Binding GpuKpiText}" Style="{DynamicResource MetricValueStyle}" />
+                        <ProgressBar Height="8"
+                                     Margin="0,10,0,0"
+                                     Value="{Binding GpuUtilizationValue}"
+                                     Maximum="100"
+                                     Foreground="{DynamicResource SuccessBrush}"
+                                     Background="{DynamicResource Surface2Brush}" />
+                        <TextBlock Text="{Binding GpuSubText}" Style="{DynamicResource MetricSubStyle}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="3" Style="{DynamicResource CardStyle}" Margin="6,0,4,0">
                     <StackPanel>
                         <TextBlock Text="Memory" Style="{DynamicResource MetricLabelStyle}" />
-                        <TextBlock Text="{Binding MemoryKpiText}" Style="{DynamicResource MetricValueStyle}" FontSize="24" />
-                        <ProgressBar Height="8" Margin="0,10,0,0" Value="{Binding MemoryUtilizationValue}" Maximum="100" Foreground="{DynamicResource WarningBrush}" Background="{DynamicResource Surface2Brush}" />
+                        <TextBlock Text="{Binding MemoryKpiText}" Style="{DynamicResource MetricValueStyle}" />
+                        <ProgressBar Height="8"
+                                     Margin="0,10,0,0"
+                                     Value="{Binding MemoryUtilizationValue}"
+                                     Maximum="100"
+                                     Foreground="{DynamicResource WarningBrush}"
+                                     Background="{DynamicResource Surface2Brush}" />
                         <TextBlock Text="{Binding MemorySubText}" Style="{DynamicResource MetricSubStyle}" Margin="0,6,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="3" Style="{DynamicResource CardStyle}" Margin="12,0,0,0" ClipToBounds="True">
+                <Border Grid.Column="4" Style="{DynamicResource CardStyle}" Margin="8,0,2,0">
+                    <StackPanel>
+                        <TextBlock Text="Disk I/O" Style="{DynamicResource MetricLabelStyle}" />
+                        <TextBlock Text="{Binding DiskText}" Style="{DynamicResource MetricValueStyle}" FontSize="16" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="Latest: " Style="{DynamicResource MetricSubStyle}" />
+                            <TextBlock Text="{Binding DiskLatestText}" Style="{DynamicResource MetricSubStyle}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="5" Style="{DynamicResource CardStyle}" Margin="10,0,0,0">
                     <StackPanel>
                         <TextBlock Text="PerfScore" Style="{DynamicResource MetricLabelStyle}" />
-                        <TextBlock Text="{Binding PerfScoreText}" Style="{DynamicResource GlowValueStyle}" FontSize="36" />
+                        <TextBlock Text="{Binding PerfScoreText}" Style="{DynamicResource GlowValueStyle}" />
                         <TextBlock Text="{Binding PerfSummaryText}" Style="{DynamicResource MetricSubStyle}" Margin="0,6,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <Grid Grid.Row="2" Margin="0,16,0,0">
+            <!-- Network / Battery -->
+            <Grid Grid.Row="3" Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="6*" />
                     <ColumnDefinition Width="6*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Style="{DynamicResource CardStyle}" Margin="0,0,8,0" ClipToBounds="True">
+                <Border Grid.Column="0" Style="{DynamicResource CardStyle}" Margin="0,0,8,0">
                     <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
                         <StackPanel>
-                            <TextBlock Text="Disk Throughput" Style="{DynamicResource MetricLabelStyle}" />
-                            <TextBlock Text="{Binding DiskText}" Style="{DynamicResource MetricValueStyle}" FontSize="24" />
+                            <TextBlock Text="Network" Style="{DynamicResource MetricLabelStyle}" />
+                            <TextBlock Text="{Binding NetText}"
+                                       Style="{DynamicResource MetricValueStyle}"
+                                       FontSize="18"
+                                       TextWrapping="Wrap"
+                                       ToolTip="{Binding NetDetailTooltipText}" />
+                            <TextBlock Text="{Binding NetMetaText}" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
                         </StackPanel>
-                        <TextBlock Grid.Column="1" Text="↓ Read / ↑ Write" Style="{DynamicResource MetricSubStyle}" VerticalAlignment="Bottom" />
+
+                        <TextBlock Grid.Column="1" Text="{Binding NetLatestText}" Style="{DynamicResource MetricSubStyle}" VerticalAlignment="Bottom" />
                     </Grid>
                 </Border>
 
-                <Border Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="8,0,0,0" ClipToBounds="True">
+                <Border Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="8,0,0,0">
                     <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
                         <StackPanel>
-                            <TextBlock Text="Network" Style="{DynamicResource MetricLabelStyle}" />
-                            <TextBlock Text="{Binding NetText}" Style="{DynamicResource MetricValueStyle}" FontSize="24" />
+                            <TextBlock Text="Battery" Style="{DynamicResource MetricLabelStyle}" />
+                            <TextBlock Text="{Binding BatteryText}" Style="{DynamicResource MetricValueStyle}" FontSize="18" />
                         </StackPanel>
-                        <TextBlock Grid.Column="1" Text="↓ Recv / ↑ Sent" Style="{DynamicResource MetricSubStyle}" VerticalAlignment="Bottom" />
+
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding LastUpdateText}"
+                                   Style="{DynamicResource MetricSubStyle}"
+                                   VerticalAlignment="Bottom"
+                                   ToolTip="{Binding TempSourceTooltipText}" />
                     </Grid>
                 </Border>
             </Grid>
 
-            <Grid Grid.Row="3" Margin="0,16,0,0">
+            <!-- Charts + Right Column -->
+            <Grid Grid.Row="4" Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="8*" />
                     <ColumnDefinition Width="4*" />
                 </Grid.ColumnDefinitions>
 
+                <!-- Charts -->
                 <Grid Grid.Column="0" Margin="0,0,8,0">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="240" />
-                        <RowDefinition Height="16" />
-                        <RowDefinition Height="240" />
-                        <RowDefinition Height="16" />
-                        <RowDefinition Height="240" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
 
-                    <Border Grid.Row="0" Style="{DynamicResource ChartCardStyle}" ClipToBounds="True">
+                    <!-- Temp -->
+                    <Border Grid.Row="0" Grid.Column="0" Style="{DynamicResource ChartCardStyle}" Margin="0,0,8,12" ClipToBounds="True">
                         <Grid>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="Temperature" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <TextBlock Text="Latest: " Style="{DynamicResource MetricSubStyle}"/>
-                                    <TextBlock Text="{Binding TempLatestText}" Style="{DynamicResource MetricSubStyle}"/>
-                                </StackPanel>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Temperature (60s)" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding TempLatestText}" Style="{DynamicResource MetricSubStyle}" />
                             </Grid>
+
                             <Grid Grid.Row="1" Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Canvas Height="180" Width="64" ClipToBounds="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="288" />
+                                </Grid.ColumnDefinitions>
+
+                                <Canvas Width="72" Height="180" ClipToBounds="True">
                                     <ItemsControl ItemsSource="{Binding TempChartTicks}">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource MetricSubStyle}"/></DataTemplate></ItemsControl.ItemTemplate>
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource AxisLabelStyle}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </Canvas>
-                                <Canvas Grid.Column="1" Height="180" ClipToBounds="True">
-                                    <Rectangle Width="720" Height="180" Fill="{DynamicResource Surface2Brush}" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" RadiusX="8" RadiusY="8" />
+
+                                <Canvas Grid.Column="1" Width="288" Height="180" ClipToBounds="True">
+                                    <Rectangle Width="288" Height="180"
+                                               Fill="{DynamicResource Surface2Brush}"
+                                               Stroke="{DynamicResource BorderBrush}"
+                                               StrokeThickness="1"
+                                               RadiusX="8" RadiusY="8" />
                                     <ItemsControl ItemsSource="{Binding TempChartTicks}">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate><DataTemplate><Line X1="0" X2="720" Y1="{Binding Y}" Y2="{Binding Y}" Stroke="#33435A69" StrokeThickness="1"/></DataTemplate></ItemsControl.ItemTemplate>
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Line X1="0" X2="288"
+                                                      Y1="{Binding Y}" Y2="{Binding Y}"
+                                                      Stroke="#33435A69"
+                                                      StrokeThickness="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+
                                     <Path Data="{Binding TempChartData}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2" />
-                                    <Ellipse Width="7" Height="7" Fill="{DynamicResource AccentBrush}" Canvas.Left="{Binding TempLatestPointX}" Canvas.Top="{Binding TempLatestPointY}" Visibility="{Binding TempLatestPointVisibility}" />
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{DynamicResource AccentBrush}"
+                                             Canvas.Left="{Binding TempLatestPointX}"
+                                             Canvas.Top="{Binding TempLatestPointY}"
+                                             Visibility="{Binding TempLatestPointVisibility}" />
                                 </Canvas>
                             </Grid>
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="2" Style="{DynamicResource ChartCardStyle}" ClipToBounds="True">
+                    <!-- CPU -->
+                    <Border Grid.Row="0" Grid.Column="1" Style="{DynamicResource ChartCardStyle}" Margin="8,0,0,12" ClipToBounds="True">
                         <Grid>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="CPU Util (%)" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <TextBlock Text="Latest: " Style="{DynamicResource MetricSubStyle}"/>
-                                    <TextBlock Text="{Binding CpuLatestText}" Style="{DynamicResource MetricSubStyle}"/>
-                                </StackPanel>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="CPU (60s)" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding CpuLatestText}" Style="{DynamicResource MetricSubStyle}" />
                             </Grid>
+
                             <Grid Grid.Row="1" Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Canvas Height="180" Width="64" ClipToBounds="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="288" />
+                                </Grid.ColumnDefinitions>
+
+                                <Canvas Width="72" Height="180">
                                     <ItemsControl ItemsSource="{Binding CpuChartTicks}">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource MetricSubStyle}"/></DataTemplate></ItemsControl.ItemTemplate>
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource AxisLabelStyle}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </Canvas>
-                                <Canvas Grid.Column="1" Height="180" ClipToBounds="True">
-                                    <Rectangle Width="720" Height="180" Fill="{DynamicResource Surface2Brush}" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" RadiusX="8" RadiusY="8" />
+
+                                <Canvas Grid.Column="1" Width="288" Height="180" ClipToBounds="True">
+                                    <Rectangle Width="288" Height="180"
+                                               Fill="{DynamicResource Surface2Brush}"
+                                               Stroke="{DynamicResource BorderBrush}"
+                                               StrokeThickness="1"
+                                               RadiusX="8" RadiusY="8" />
                                     <ItemsControl ItemsSource="{Binding CpuChartTicks}">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate><DataTemplate><Line X1="0" X2="720" Y1="{Binding Y}" Y2="{Binding Y}" Stroke="#33435A69" StrokeThickness="1"/></DataTemplate></ItemsControl.ItemTemplate>
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Line X1="0" X2="288"
+                                                      Y1="{Binding Y}" Y2="{Binding Y}"
+                                                      Stroke="#33435A69"
+                                                      StrokeThickness="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+
                                     <Path Data="{Binding CpuChartData}" Stroke="{DynamicResource SuccessBrush}" StrokeThickness="2" />
-                                    <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}" Canvas.Left="{Binding CpuLatestPointX}" Canvas.Top="{Binding CpuLatestPointY}" Visibility="{Binding CpuLatestPointVisibility}" />
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{DynamicResource SuccessBrush}"
+                                             Canvas.Left="{Binding CpuLatestPointX}"
+                                             Canvas.Top="{Binding CpuLatestPointY}"
+                                             Visibility="{Binding CpuLatestPointVisibility}" />
                                 </Canvas>
                             </Grid>
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="4" Style="{DynamicResource ChartCardStyle}" ClipToBounds="True">
+                    <!-- GPU -->
+                    <Border Grid.Row="1" Grid.Column="0" Style="{DynamicResource ChartCardStyle}" Margin="0,0,8,12" ClipToBounds="True">
                         <Grid>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="Memory Util (%)" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                    <TextBlock Text="Latest: " Style="{DynamicResource MetricSubStyle}"/>
-                                    <TextBlock Text="{Binding MemLatestText}" Style="{DynamicResource MetricSubStyle}"/>
-                                </StackPanel>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="GPU (60s)" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding GpuLatestText}" Style="{DynamicResource MetricSubStyle}" />
                             </Grid>
+
                             <Grid Grid.Row="1" Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Canvas Height="180" Width="64" ClipToBounds="True">
-                                    <ItemsControl ItemsSource="{Binding MemChartTicks}">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource MetricSubStyle}"/></DataTemplate></ItemsControl.ItemTemplate>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="288" />
+                                </Grid.ColumnDefinitions>
+
+                                <Canvas Width="72" Height="180">
+                                    <ItemsControl ItemsSource="{Binding GpuChartTicks}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource AxisLabelStyle}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </Canvas>
-                                <Canvas Grid.Column="1" Height="180" ClipToBounds="True">
-                                    <Rectangle Width="720" Height="180" Fill="{DynamicResource Surface2Brush}" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" RadiusX="8" RadiusY="8" />
-                                    <ItemsControl ItemsSource="{Binding MemChartTicks}">
-                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate><DataTemplate><Line X1="0" X2="720" Y1="{Binding Y}" Y2="{Binding Y}" Stroke="#33435A69" StrokeThickness="1"/></DataTemplate></ItemsControl.ItemTemplate>
+
+                                <Canvas Grid.Column="1" Width="288" Height="180" ClipToBounds="True">
+                                    <Rectangle Width="288" Height="180"
+                                               Fill="{DynamicResource Surface2Brush}"
+                                               Stroke="{DynamicResource BorderBrush}"
+                                               StrokeThickness="1"
+                                               RadiusX="8" RadiusY="8" />
+                                    <ItemsControl ItemsSource="{Binding GpuChartTicks}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Line X1="0" X2="288"
+                                                      Y1="{Binding Y}" Y2="{Binding Y}"
+                                                      Stroke="#33435A69"
+                                                      StrokeThickness="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <Path Data="{Binding MemChartData}" Stroke="{DynamicResource WarningBrush}" StrokeThickness="2" />
-                                    <Ellipse Width="7" Height="7" Fill="{DynamicResource WarningBrush}" Canvas.Left="{Binding MemLatestPointX}" Canvas.Top="{Binding MemLatestPointY}" Visibility="{Binding MemLatestPointVisibility}" />
+
+                                    <Path Data="{Binding GpuChartData}" Stroke="{DynamicResource WarningBrush}" StrokeThickness="2" />
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{DynamicResource WarningBrush}"
+                                             Canvas.Left="{Binding GpuLatestPointX}"
+                                             Canvas.Top="{Binding GpuLatestPointY}"
+                                             Visibility="{Binding GpuLatestPointVisibility}" />
+                                </Canvas>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Memory -->
+                    <Border Grid.Row="1" Grid.Column="1" Style="{DynamicResource ChartCardStyle}" Margin="8,0,0,12" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Memory (60s)" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding MemLatestText}" Style="{DynamicResource MetricSubStyle}" />
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="288" />
+                                </Grid.ColumnDefinitions>
+
+                                <Canvas Width="72" Height="180">
+                                    <ItemsControl ItemsSource="{Binding MemChartTicks}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource AxisLabelStyle}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Canvas>
+
+                                <Canvas Grid.Column="1" Width="288" Height="180" ClipToBounds="True">
+                                    <Rectangle Width="288" Height="180"
+                                               Fill="{DynamicResource Surface2Brush}"
+                                               Stroke="{DynamicResource BorderBrush}"
+                                               StrokeThickness="1"
+                                               RadiusX="8" RadiusY="8" />
+                                    <ItemsControl ItemsSource="{Binding MemChartTicks}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Line X1="0" X2="288"
+                                                      Y1="{Binding Y}" Y2="{Binding Y}"
+                                                      Stroke="#33435A69"
+                                                      StrokeThickness="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Path Data="{Binding MemChartData}" Stroke="{DynamicResource DangerBrush}" StrokeThickness="2" />
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{DynamicResource DangerBrush}"
+                                             Canvas.Left="{Binding MemLatestPointX}"
+                                             Canvas.Top="{Binding MemLatestPointY}"
+                                             Visibility="{Binding MemLatestPointVisibility}" />
+                                </Canvas>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Disk -->
+                    <Border Grid.Row="2" Grid.Column="0" Style="{DynamicResource ChartCardStyle}" Margin="0,0,8,0" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Disk I/O (60s)" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding DiskLatestText}" Style="{DynamicResource MetricSubStyle}" />
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="288" />
+                                </Grid.ColumnDefinitions>
+
+                                <Canvas Width="72" Height="180">
+                                    <ItemsControl ItemsSource="{Binding DiskChartTicks}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource AxisLabelStyle}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Canvas>
+
+                                <Canvas Grid.Column="1" Width="288" Height="180" ClipToBounds="True">
+                                    <Rectangle Width="288" Height="180"
+                                               Fill="{DynamicResource Surface2Brush}"
+                                               Stroke="{DynamicResource BorderBrush}"
+                                               StrokeThickness="1"
+                                               RadiusX="8" RadiusY="8" />
+                                    <ItemsControl ItemsSource="{Binding DiskChartTicks}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Line X1="0" X2="288"
+                                                      Y1="{Binding Y}" Y2="{Binding Y}"
+                                                      Stroke="#33435A69"
+                                                      StrokeThickness="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Path Data="{Binding DiskChartData}" Stroke="{DynamicResource SuccessBrush}" StrokeThickness="2" />
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{DynamicResource SuccessBrush}"
+                                             Canvas.Left="{Binding DiskLatestPointX}"
+                                             Canvas.Top="{Binding DiskLatestPointY}"
+                                             Visibility="{Binding DiskLatestPointVisibility}" />
+                                </Canvas>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Network -->
+                    <Border Grid.Row="2" Grid.Column="1" Style="{DynamicResource ChartCardStyle}" Margin="8,0,0,0" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Network (60s)" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding NetLatestText}" Style="{DynamicResource MetricSubStyle}" />
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="288" />
+                                </Grid.ColumnDefinitions>
+
+                                <Canvas Width="72" Height="180">
+                                    <ItemsControl ItemsSource="{Binding NetChartTicks}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" Canvas.Top="{Binding Y}" Style="{DynamicResource AxisLabelStyle}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Canvas>
+
+                                <Canvas Grid.Column="1" Width="288" Height="180" ClipToBounds="True">
+                                    <Rectangle Width="288" Height="180"
+                                               Fill="{DynamicResource Surface2Brush}"
+                                               Stroke="{DynamicResource BorderBrush}"
+                                               StrokeThickness="1"
+                                               RadiusX="8" RadiusY="8" />
+                                    <ItemsControl ItemsSource="{Binding NetChartTicks}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Line X1="0" X2="288"
+                                                      Y1="{Binding Y}" Y2="{Binding Y}"
+                                                      Stroke="#33435A69"
+                                                      StrokeThickness="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Path Data="{Binding NetChartData}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2" />
+                                    <Ellipse Width="7" Height="7"
+                                             Fill="{DynamicResource AccentBrush}"
+                                             Canvas.Left="{Binding NetLatestPointX}"
+                                             Canvas.Top="{Binding NetLatestPointY}"
+                                             Visibility="{Binding NetLatestPointVisibility}" />
                                 </Canvas>
                             </Grid>
                         </Grid>
                     </Border>
                 </Grid>
 
+                <!-- Right Column -->
                 <Grid Grid.Column="1" Margin="8,0,0,0">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="280" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="16" />
-                        <RowDefinition Height="200" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="16" />
-                        <RowDefinition Height="240" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0" Style="{DynamicResource CardStyle}" ClipToBounds="True">
+                    <!-- System Profile -->
+                    <Border Grid.Row="0" Style="{DynamicResource CardStyle}">
                         <Grid>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <TextBlock Text="System Profile" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
                                 <CheckBox Content="Opt-in" IsChecked="{Binding OptInConsent}" Margin="10,1,0,0" />
                                 <Button Content="更新" Width="70" Margin="8,0,0,0" Click="RefreshProfileButton_OnClick" />
                             </StackPanel>
+
                             <Grid Grid.Row="1">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="OS" Style="{DynamicResource MetricLabelStyle}"/><TextBlock Grid.Column="1" Text="{Binding ProfileOsText}"/>
-                                <TextBlock Grid.Row="1" Text="CPU" Style="{DynamicResource MetricLabelStyle}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ProfileCpuBrand}" TextWrapping="Wrap"/>
-                                <TextBlock Grid.Row="2" Text="Cores" Style="{DynamicResource MetricLabelStyle}"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ProfileCoreText}"/>
-                                <TextBlock Grid.Row="3" Text="Memory" Style="{DynamicResource MetricLabelStyle}"/><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ProfileMemoryBucket}"/>
-                                <TextBlock Grid.Row="4" Text="GPU" Style="{DynamicResource MetricLabelStyle}"/><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ProfileGpuName}" TextWrapping="Wrap"/>
-                                <TextBlock Grid.Row="5" Text="Storage" Style="{DynamicResource MetricLabelStyle}"/><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding ProfileStorageText}"/>
-                                <TextBlock Grid.Row="6" Text="Provider" Style="{DynamicResource MetricLabelStyle}"/><TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding ProfileTempProvider}"/>
+
+                                <TextBlock Text="OS" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding ProfileOsText}" />
+
+                                <TextBlock Grid.Row="1" Text="CPU" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ProfileCpuBrand}" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="2" Text="Cores" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ProfileCoreText}" />
+
+                                <TextBlock Grid.Row="3" Text="Memory" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ProfileMemoryBucket}" />
+
+                                <TextBlock Grid.Row="4" Text="GPU" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ProfileGpuName}" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="5" Text="Storage" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding ProfileStorageText}" />
+
+                                <TextBlock Grid.Row="6" Text="Device" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding ProfileDeviceClass}" />
+
+                                <TextBlock Grid.Row="7" Text="Provider" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding ProfileTempProvider}" />
+
+                                <TextBlock Grid.Row="8" Text="Vendor" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding ProfileMachineVendor}" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="9" Text="Model" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding ProfileMachineModel}" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="10" Text="Uptime" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding ProfileUptimeText}" />
+
+                                <TextBlock Grid.Row="11" Text="GPU Driver" Style="{DynamicResource MetricLabelStyle}" />
+                                <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding ProfileGpuDriverVersion}" TextWrapping="Wrap" />
                             </Grid>
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="2" Style="{DynamicResource CardStyle}" ClipToBounds="True">
+                    <!-- Score Breakdown -->
+                    <Border Grid.Row="2" Style="{DynamicResource CardStyle}">
                         <Grid>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
                             <TextBlock Text="Score Breakdown" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
-                            <StackPanel Grid.Row="1" Margin="0,8,0,0">
-                                <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions><TextBlock Text="CPU" Style="{DynamicResource MetricSubStyle}"/><ProgressBar Grid.Column="1" Value="{Binding ScoreCpuValue}" Maximum="100" Height="8" Margin="8,0"/><TextBlock Grid.Column="2" Text="{Binding ScoreCpuText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right"/></Grid>
-                                <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions><TextBlock Text="Memory" Style="{DynamicResource MetricSubStyle}"/><ProgressBar Grid.Column="1" Value="{Binding ScoreMemValue}" Maximum="100" Height="8" Margin="8,0"/><TextBlock Grid.Column="2" Text="{Binding ScoreMemText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right"/></Grid>
-                                <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions><TextBlock Text="Disk" Style="{DynamicResource MetricSubStyle}"/><ProgressBar Grid.Column="1" Value="{Binding ScoreDiskValue}" Maximum="100" Height="8" Margin="8,0"/><TextBlock Grid.Column="2" Text="{Binding ScoreDiskText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right"/></Grid>
-                                <Grid Margin="0,0,0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions><TextBlock Text="Network" Style="{DynamicResource MetricSubStyle}"/><ProgressBar Grid.Column="1" Value="{Binding ScoreNetValue}" Maximum="100" Height="8" Margin="8,0"/><TextBlock Grid.Column="2" Text="{Binding ScoreNetText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right"/></Grid>
-                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions><TextBlock Text="Thermal" Style="{DynamicResource MetricSubStyle}"/><ProgressBar Grid.Column="1" Value="{Binding ScoreTempValue}" Maximum="100" Height="8" Margin="8,0"/><TextBlock Grid.Column="2" Text="{Binding ScoreTempText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right"/></Grid>
-                                <TextBlock Text="{Binding LocalRankingText}" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" TextWrapping="Wrap" />
-                            </StackPanel>
+
+                            <Grid Grid.Row="1" Margin="0,8,0,0" HorizontalAlignment="Center">
+                                <Canvas Width="280" Height="230" ClipToBounds="True">
+                                    <Polygon Points="{Binding RadarGrid100Points}" Stroke="#445F7180" StrokeThickness="1" Fill="Transparent" />
+                                    <Polygon Points="{Binding RadarGrid80Points}" Stroke="#335F7180" StrokeThickness="1" Fill="Transparent" />
+                                    <Polygon Points="{Binding RadarGrid60Points}" Stroke="#285F7180" StrokeThickness="1" Fill="Transparent" />
+                                    <Polygon Points="{Binding RadarGrid40Points}" Stroke="#205F7180" StrokeThickness="1" Fill="Transparent" />
+                                    <Polygon Points="{Binding RadarGrid20Points}" Stroke="#185F7180" StrokeThickness="1" Fill="Transparent" />
+
+                                    <TextBlock Text="100" Canvas.Left="146" Canvas.Top="30" Style="{DynamicResource AxisLabelStyle}" Width="28" TextAlignment="Left" />
+                                    <TextBlock Text="75" Canvas.Left="146" Canvas.Top="49" Style="{DynamicResource AxisLabelStyle}" Width="28" TextAlignment="Left" />
+                                    <TextBlock Text="50" Canvas.Left="146" Canvas.Top="68" Style="{DynamicResource AxisLabelStyle}" Width="28" TextAlignment="Left" />
+                                    <TextBlock Text="25" Canvas.Left="146" Canvas.Top="87" Style="{DynamicResource AxisLabelStyle}" Width="28" TextAlignment="Left" />
+                                    <TextBlock Text="0" Canvas.Left="146" Canvas.Top="106" Style="{DynamicResource AxisLabelStyle}" Width="28" TextAlignment="Left" />
+
+                                    <Line X1="140" Y1="115" X2="140" Y2="37" Stroke="#295F7180" StrokeThickness="1" />
+                                    <Line X1="140" Y1="115" X2="207.6" Y2="76" Stroke="#295F7180" StrokeThickness="1" />
+                                    <Line X1="140" Y1="115" X2="207.6" Y2="154" Stroke="#295F7180" StrokeThickness="1" />
+                                    <Line X1="140" Y1="115" X2="140" Y2="193" Stroke="#295F7180" StrokeThickness="1" />
+                                    <Line X1="140" Y1="115" X2="72.4" Y2="154" Stroke="#295F7180" StrokeThickness="1" />
+                                    <Line X1="140" Y1="115" X2="72.4" Y2="76" Stroke="#295F7180" StrokeThickness="1" />
+
+                                    <Polygon Points="{Binding RadarScorePoints}" Fill="#3A2ED8B3" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2" />
+
+                                    <TextBlock Text="{Binding RadarCpuLabel}" Canvas.Left="112" Canvas.Top="10" Style="{DynamicResource MetricSubStyle}" />
+                                    <TextBlock Text="{Binding RadarMemLabel}" Canvas.Left="212" Canvas.Top="70" Style="{DynamicResource MetricSubStyle}" />
+                                    <TextBlock Text="{Binding RadarDiskLabel}" Canvas.Left="212" Canvas.Top="154" Style="{DynamicResource MetricSubStyle}" />
+                                    <TextBlock Text="{Binding RadarNetLabel}" Canvas.Left="110" Canvas.Top="205" Style="{DynamicResource MetricSubStyle}" />
+                                    <TextBlock Text="{Binding RadarThermalLabel}" Canvas.Left="8" Canvas.Top="154" Style="{DynamicResource MetricSubStyle}" />
+                                    <TextBlock Text="{Binding RadarGpuLabel}" Canvas.Left="8" Canvas.Top="70" Style="{DynamicResource MetricSubStyle}" />
+                                </Canvas>
+                            </Grid>
+
+                            <ItemsControl Grid.Row="2" ItemsSource="{Binding ScoreInsights}" Margin="0,6,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Style="{DynamicResource MetricSubStyle}" Margin="0,2,0,0" TextWrapping="Wrap">
+                                            <Run Text="•  " />
+                                            <Run Text="{Binding ., Mode=OneWay}" />
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Expander Grid.Row="3" Header="詳細 ▼" Margin="0,8,0,0">
+                                <StackPanel Margin="0,6,0,0">
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="70" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="40" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="CPU" Style="{DynamicResource MetricSubStyle}" />
+                                        <ProgressBar Grid.Column="1" Value="{Binding ScoreCpuValue}" Maximum="100" Height="8" Margin="8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding ScoreCpuText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding ScoreCpuReason}" Style="{DynamicResource MetricSubStyle}" Margin="0,0,0,6" />
+
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="70" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="40" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Memory" Style="{DynamicResource MetricSubStyle}" />
+                                        <ProgressBar Grid.Column="1" Value="{Binding ScoreMemValue}" Maximum="100" Height="8" Margin="8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding ScoreMemText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding ScoreMemReason}" Style="{DynamicResource MetricSubStyle}" Margin="0,0,0,6" />
+
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="70" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="40" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Disk" Style="{DynamicResource MetricSubStyle}" />
+                                        <ProgressBar Grid.Column="1" Value="{Binding ScoreDiskValue}" Maximum="100" Height="8" Margin="8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding ScoreDiskText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding ScoreDiskReason}" Style="{DynamicResource MetricSubStyle}" Margin="0,0,0,6" />
+
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="70" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="40" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Network" Style="{DynamicResource MetricSubStyle}" />
+                                        <ProgressBar Grid.Column="1" Value="{Binding ScoreNetValue}" Maximum="100" Height="8" Margin="8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding ScoreNetText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding ScoreNetReason}" Style="{DynamicResource MetricSubStyle}" Margin="0,0,0,6" />
+
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="70" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="40" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Thermal" Style="{DynamicResource MetricSubStyle}" />
+                                        <ProgressBar Grid.Column="1" Value="{Binding ScoreTempValue}" Maximum="100" Height="8" Margin="8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding ScoreTempText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding ScoreTempReason}" Style="{DynamicResource MetricSubStyle}" Margin="0,0,0,6" />
+
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="70" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="40" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="GPU" Style="{DynamicResource MetricSubStyle}" />
+                                        <ProgressBar Grid.Column="1" Value="{Binding ScoreGpuValue}" Maximum="100" Height="8" Margin="8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding ScoreGpuText}" Style="{DynamicResource MetricSubStyle}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding ScoreGpuReason}" Style="{DynamicResource MetricSubStyle}" Margin="0,0,0,8" />
+
+                                    <TextBlock Text="{Binding LocalRankingText}" Style="{DynamicResource MetricSubStyle}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Expander>
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="4" Style="{DynamicResource CardStyle}" ClipToBounds="True">
+                    <!-- Diagnostics -->
+                    <Border Grid.Row="4" Style="{DynamicResource CardStyle}">
                         <Grid>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
                             <TextBlock Text="Diagnostics" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
-                            <TextBlock Grid.Row="1" Text="{Binding DiagnosticsSummaryText}" Style="{DynamicResource MetricSubStyle}" Margin="0,6,0,8" TextWrapping="Wrap" />
+                            <TextBlock Grid.Row="1"
+                                       Text="{Binding DiagnosticsSummaryText}"
+                                       Style="{DynamicResource MetricSubStyle}"
+                                       Margin="0,6,0,8"
+                                       TextWrapping="Wrap" />
+
                             <Expander Grid.Row="2" Header="Diagnostics ▼" IsExpanded="False">
                                 <Grid>
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
                                     <StackPanel Grid.Column="0" Margin="0,0,8,0">
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                             <Button Content="ログをコピー" Width="120" Click="CopyLogsButton_OnClick" />
                                             <Button Content="診断更新" Width="110" Margin="8,0,0,0" Click="RefreshDiagnosticsButton_OnClick" />
                                         </StackPanel>
-                                        <CheckBox Content="終了時に Core Temp も終了する" IsChecked="{Binding CloseCoreTempOnExitConsent}" Margin="0,0,0,8" />
+
+                                        <TextBlock Text="provider_errors" Style="{DynamicResource MetricSubStyle}" Margin="0,0,0,4" />
+                                        <TextBox Text="{Binding ProviderErrorsText}"
+                                                 FontFamily="Consolas"
+                                                 AcceptsReturn="True"
+                                                 TextWrapping="Wrap"
+                                                 IsReadOnly="True"
+                                                 Height="72"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 Margin="0,0,0,8" />
+
                                         <ListBox ItemsSource="{Binding Logs}" FontFamily="Consolas" Height="120" />
                                     </StackPanel>
-                                    <TextBox Grid.Column="1" Text="{Binding DiagnosticSensorsText}" FontFamily="Consolas" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" IsReadOnly="True" Margin="8,0,0,0" Height="152" />
+
+                                    <Grid Grid.Column="1" Margin="8,0,0,0">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="120" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="120" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Text="sensors_raw" Style="{DynamicResource MetricSubStyle}" />
+                                        <TextBox Grid.Row="1"
+                                                 Text="{Binding DiagnosticSensorsText}"
+                                                 FontFamily="Consolas"
+                                                 AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 TextWrapping="Wrap"
+                                                 IsReadOnly="True" />
+
+                                        <TextBox Grid.Row="4"
+                                                 Text="{Binding DiagnosticTelemetryText}"
+                                                 FontFamily="Consolas"
+                                                 AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 TextWrapping="Wrap"
+                                                 IsReadOnly="True" />
+                                    </Grid>
                                 </Grid>
                             </Expander>
                         </Grid>
