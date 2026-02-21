@@ -809,6 +809,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static void UpdateTicks(ObservableCollection<ChartTick> target, int ticks, double min, double max, double plotHeight, string unit, int decimals)
     {
         target.Clear();
+        const double labelHeight = 16;
+        var maxTop = Math.Max(0, plotHeight - labelHeight);
         for (var i = 0; i < ticks; i++)
         {
             var ratio = (double)i / (ticks - 1);
@@ -823,7 +825,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 label = decimals > 0 ? $"{value:F1}{unit}" : $"{value:F0}{unit}";
             }
-            target.Add(new ChartTick { Y = y - 8, Label = label });
+            var top = Math.Clamp(y - (labelHeight / 2.0), 0, maxTop);
+            target.Add(new ChartTick { Y = top, Label = label });
         }
     }
 
