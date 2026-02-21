@@ -6,7 +6,9 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -18,9 +20,12 @@ namespace CheckMechanic.Desktop;
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
+    private const string UpdateManifestUrl = "https://updates.example.com/checkmechanic/latest.json";
+    private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(24);
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(1.5) };
+    private readonly HttpClient _updateHttpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
     private readonly DispatcherTimer _timer;
 
     // --- Commit A: polling concurrency guard ---
@@ -43,6 +48,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _latestPerfGrade = "N/A";
     private bool _isSwitchingToWidgetMode;
     private bool _coreTempArtifactsCleanupDone;
+    private bool _isUpdateCheckRunning;
+    private string? _availableUpdateVersion;
+    private string? _availableUpdateDownloadUrl;
+    private string? _availableUpdateReleaseNotesUrl;
+    private string? _availableUpdateSha256;
 
     // --- Commit C: redraw suppression ---
     private int? _lastUiHash;
@@ -178,6 +188,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public Visibility RestrictionVisibility { get; set; } = Visibility.Visible;
     public string DiagnosticsSummaryText { get; set; } = "errors:0 / provider:-";
     public string LocalRankingText { get; set; } = "ローカル履歴: N/A";
+    public Visibility UpdateBadgeVisibility { get; set; } = Visibility.Collapsed;
+    public string UpdateBadgeTooltip { get; set; } = string.Empty;
 
     public string ProfileOsMajor { get; set; } = "-";
     public string ProfileOsBuildBucket { get; set; } = "-";
@@ -275,6 +287,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         LoadUiSettings();
         LoadLocalScoreHistory();
         CleanupCoreTempInstallerArtifacts();
+        _ = RunUpdateCheckAsync(force: false);
         await EnsureHelperAvailableAsync();
 
         await PollAllAsync(forceProfile: true);
@@ -1393,6 +1406,305 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         RefreshBindings(force: true);
     }
 
+    private async void UpdateBadgeButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        await RunUpdateCheckAsync(force: true);
+        if (UpdateBadgeVisibility != Visibility.Visible ||
+            string.IsNullOrWhiteSpace(_availableUpdateVersion) ||
+            string.IsNullOrWhiteSpace(_availableUpdateDownloadUrl) ||
+            string.IsNullOrWhiteSpace(_availableUpdateSha256))
+        {
+            MessageBox.Show(this, "現在利用可能な更新は見つかりませんでした。", "CheckMechanic Update", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var notes = string.IsNullOrWhiteSpace(_availableUpdateReleaseNotesUrl) ? "-" : _availableUpdateReleaseNotesUrl;
+        var confirm = MessageBox.Show(
+            this,
+            $"新しいバージョン {_availableUpdateVersion} が利用可能です。{Environment.NewLine}{Environment.NewLine}リリースノート: {notes}{Environment.NewLine}{Environment.NewLine}更新を開始しますか？",
+            "CheckMechanic Update",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await DownloadAndRunUpdaterAsync();
+    }
+
+    private async Task RunUpdateCheckAsync(bool force)
+    {
+        if (_isUpdateCheckRunning)
+        {
+            return;
+        }
+
+        _isUpdateCheckRunning = true;
+        try
+        {
+            if (!force && !await ShouldRunUpdateCheckAsync())
+            {
+                return;
+            }
+
+            var manifest = await FetchLatestManifestAsync();
+            await SaveUpdateCheckStateAsync(DateTimeOffset.UtcNow);
+            if (manifest is null)
+            {
+                return;
+            }
+
+            var currentVersion = GetCurrentAppVersionString();
+            if (IsNewerVersion(manifest.Version, currentVersion))
+            {
+                _availableUpdateVersion = manifest.Version;
+                _availableUpdateDownloadUrl = manifest.DownloadUrl;
+                _availableUpdateReleaseNotesUrl = manifest.ReleaseNotesUrl;
+                _availableUpdateSha256 = manifest.Sha256;
+                UpdateBadgeTooltip = $"新しいバージョン: {manifest.Version}";
+                UpdateBadgeVisibility = Visibility.Visible;
+                AddLog($"update available: {manifest.Version} (current {currentVersion})");
+            }
+            else
+            {
+                _availableUpdateVersion = null;
+                _availableUpdateDownloadUrl = null;
+                _availableUpdateReleaseNotesUrl = null;
+                _availableUpdateSha256 = null;
+                UpdateBadgeTooltip = string.Empty;
+                UpdateBadgeVisibility = Visibility.Collapsed;
+            }
+
+            RefreshBindings(force: true);
+        }
+        catch (Exception ex)
+        {
+            AddLog($"update check failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            _isUpdateCheckRunning = false;
+        }
+    }
+
+    private async Task<bool> ShouldRunUpdateCheckAsync()
+    {
+        var state = await LoadUpdateCheckStateAsync();
+        if (state?.LastCheckedUtc is not DateTimeOffset last)
+        {
+            return true;
+        }
+
+        return DateTimeOffset.UtcNow - last >= UpdateCheckInterval;
+    }
+
+    private async Task<UpdateManifest?> FetchLatestManifestAsync()
+    {
+        try
+        {
+            using var response = await _updateHttpClient.GetAsync(UpdateManifestUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                AddLog($"update check HTTP {(int)response.StatusCode}");
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var manifest = JsonSerializer.Deserialize<UpdateManifest>(json, JsonOptions);
+            if (manifest is null ||
+                string.IsNullOrWhiteSpace(manifest.Version) ||
+                string.IsNullOrWhiteSpace(manifest.DownloadUrl) ||
+                string.IsNullOrWhiteSpace(manifest.Sha256))
+            {
+                AddLog("update manifest invalid");
+                return null;
+            }
+
+            return manifest;
+        }
+        catch (Exception ex)
+        {
+            AddLog($"update check request failed: {ex.GetType().Name}");
+            return null;
+        }
+    }
+
+    private async Task DownloadAndRunUpdaterAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_availableUpdateVersion) ||
+            string.IsNullOrWhiteSpace(_availableUpdateDownloadUrl) ||
+            string.IsNullOrWhiteSpace(_availableUpdateSha256))
+        {
+            return;
+        }
+
+        try
+        {
+            var updateDir = GetUpdateVersionDirectory(_availableUpdateVersion);
+            Directory.CreateDirectory(updateDir);
+
+            var setupPath = Path.Combine(updateDir, "Setup.exe");
+            using (var response = await _updateHttpClient.GetAsync(_availableUpdateDownloadUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+                await using var source = await response.Content.ReadAsStreamAsync();
+                await using var target = new FileStream(setupPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                await source.CopyToAsync(target);
+            }
+
+            var actualSha256 = await ComputeSha256Async(setupPath);
+            var expectedSha256 = NormalizeSha256(_availableUpdateSha256);
+            if (!string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                AddLog("update package verification failed");
+                MessageBox.Show(this, "更新ファイルの検証に失敗しました。更新を中止します。", "CheckMechanic Update", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var burnLogPath = Path.Combine(updateDir, $"burn_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = setupPath,
+                Arguments = $"/passive /norestart /log \"{burnLogPath}\"",
+                UseShellExecute = true,
+                WorkingDirectory = updateDir,
+            };
+
+            var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                throw new InvalidOperationException("Setup.exe launch failed");
+            }
+
+            AddLog($"update installer started: {setupPath}");
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            AddLog($"update run failed: {ex.GetType().Name}: {ex.Message}");
+            MessageBox.Show(this, "更新の実行に失敗しました。Diagnostics/ログを確認してください。", "CheckMechanic Update", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task<UpdateCheckState?> LoadUpdateCheckStateAsync()
+    {
+        try
+        {
+            var path = GetUpdateCheckStatePath();
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var json = await File.ReadAllTextAsync(path);
+            return JsonSerializer.Deserialize<UpdateCheckState>(json, JsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task SaveUpdateCheckStateAsync(DateTimeOffset checkedUtc)
+    {
+        try
+        {
+            var path = GetUpdateCheckStatePath();
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var state = new UpdateCheckState { LastCheckedUtc = checkedUtc };
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(state, JsonOptions));
+        }
+        catch
+        {
+        }
+    }
+
+    private static string GetUpdateCheckStatePath()
+    {
+        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CheckMechanic", "updates");
+        return Path.Combine(root, "update_state.json");
+    }
+
+    private static string GetUpdateVersionDirectory(string version)
+    {
+        var safeVersion = string.Concat(version.Select(ch => char.IsLetterOrDigit(ch) || ch is '.' or '-' or '_' ? ch : '_'));
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CheckMechanic", "updates", safeVersion);
+    }
+
+    private static string GetCurrentAppVersionString()
+    {
+        var version = typeof(MainWindow).Assembly.GetName().Version;
+        if (version is null)
+        {
+            return "0.0.0";
+        }
+
+        var build = version.Build < 0 ? 0 : version.Build;
+        return $"{version.Major}.{version.Minor}.{build}";
+    }
+
+    private static bool IsNewerVersion(string candidate, string current)
+    {
+        var c1 = ParseVersionParts(candidate);
+        var c2 = ParseVersionParts(current);
+        var len = Math.Max(c1.Count, c2.Count);
+        for (var i = 0; i < len; i++)
+        {
+            var v1 = i < c1.Count ? c1[i] : 0;
+            var v2 = i < c2.Count ? c2[i] : 0;
+            if (v1 > v2)
+            {
+                return true;
+            }
+            if (v1 < v2)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static List<int> ParseVersionParts(string value)
+    {
+        var result = new List<int>();
+        foreach (var segment in value.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var digits = new string(segment.TakeWhile(char.IsDigit).ToArray());
+            if (int.TryParse(digits, out var number))
+            {
+                result.Add(number);
+            }
+            else
+            {
+                result.Add(0);
+            }
+        }
+
+        if (result.Count == 0)
+        {
+            result.Add(0);
+        }
+
+        return result;
+    }
+
+    private static string NormalizeSha256(string value) => value.Replace(" ", string.Empty).Trim();
+
+    private static async Task<string> ComputeSha256Async(string filePath)
+    {
+        await using var stream = File.OpenRead(filePath);
+        using var sha = SHA256.Create();
+        var hash = await sha.ComputeHashAsync(stream);
+        return Convert.ToHexString(hash);
+    }
+
     private async void RestartHelperButton_OnClick(object sender, RoutedEventArgs e)
     {
         TryKillHelperProcesses();
@@ -1760,6 +2072,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         hc.Add(ProfileText);
         hc.Add(RankingProfileText);
         hc.Add(LocalRankingText);
+        hc.Add((int)UpdateBadgeVisibility);
+        hc.Add(UpdateBadgeTooltip);
 
         // NOTE: LastUpdateText intentionally excluded to allow suppression
         return hc.ToHashCode();
@@ -2068,6 +2382,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private sealed class UpdateManifest
+    {
+        [JsonPropertyName("version")]
+        public string Version { get; set; } = string.Empty;
+
+        [JsonPropertyName("download_url")]
+        public string DownloadUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("release_notes_url")]
+        public string? ReleaseNotesUrl { get; set; }
+
+        [JsonPropertyName("sha256")]
+        public string Sha256 { get; set; } = string.Empty;
+    }
+
+    private sealed class UpdateCheckState
+    {
+        public DateTimeOffset LastCheckedUtc { get; set; }
+    }
 
     private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
     {

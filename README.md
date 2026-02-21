@@ -109,6 +109,20 @@ pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -Pu
 - 念のため Desktop 起動時に既知パターンの不要 `.url` を後始末（誤削除防止のため署名+更新時刻で判定）
 - Core Temp の再配布条件はライセンス要確認（既定は同梱しない）
 
+### 更新チェック（Desktop）
+- Desktop 起動時に `latest.json` を非同期取得し、新版があればヘッダ右上に `UPDATE` バッジを表示
+- `latest.json` は固定URL（`MainWindow.xaml.cs` の `UpdateManifestUrl` 定数）から取得
+- 想定スキーマ:
+```json
+{
+  "version": "1.0.2",
+  "download_url": "https://.../checkmechanic/1.0.2/Setup.exe",
+  "release_notes_url": "https://.../releases/1.0.2",
+  "sha256": "hex..."
+}
+```
+- バッジクリックで Setup.exe を `%LocalAppData%\\CheckMechanic\\updates\\<version>\\Setup.exe` に保存し、SHA256検証後に Burn を `/passive /norestart /log` で起動
+
 ### API quick check
 ```powershell
 irm http://127.0.0.1:17805/health

@@ -67,6 +67,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Button Content="再チェック"
                                 Style="{DynamicResource PrimaryButtonStyle}"
@@ -95,8 +96,17 @@
                                   Margin="0,0,8,0"
                                   ToolTip="アプリ終了時に Core Temp を自動終了します（手動起動分も対象）" />
 
+                        <Button Grid.Column="3"
+                                Content="UPDATE"
+                                Style="{DynamicResource UpdateBadgeButtonStyle}"
+                                Height="34"
+                                Margin="0,0,8,0"
+                                Visibility="{Binding UpdateBadgeVisibility}"
+                                ToolTip="{Binding UpdateBadgeTooltip}"
+                                Click="UpdateBadgeButton_OnClick" />
+
                         <Button x:Name="MoreActionsButton"
-                                Grid.Column="3"
+                                Grid.Column="4"
                                 Content="⋯"
                                 Style="{DynamicResource TertiaryButtonStyle}"
                                 Width="42"
