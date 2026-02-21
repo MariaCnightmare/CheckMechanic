@@ -85,6 +85,7 @@
                                     <MenuItem Header="管理者で再試行" Click="RestartHelperAsAdminButton_OnClick" />
                                     <MenuItem Header="SensorHelper再起動" Click="RestartHelperButton_OnClick" />
                                     <MenuItem Header="再接続" Click="ReconnectButton_OnClick" />
+                                    <MenuItem Header="ウィジェットモードへ" Click="OpenWidgetModeButton_OnClick" />
                                     <MenuItem Header="終了時に Core Temp も終了"
                                               IsCheckable="True"
                                               IsChecked="{Binding CloseCoreTempOnExitConsent, Mode=TwoWay}"

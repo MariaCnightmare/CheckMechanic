@@ -41,6 +41,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _closeCoreTempOnExitConsent = true;
     private int _latestPerfScore;
     private string _latestPerfGrade = "N/A";
+    private bool _isSwitchingToWidgetMode;
 
     // --- Commit C: redraw suppression ---
     private int? _lastUiHash;
@@ -1150,60 +1151,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static string GetHistoryFilePath()
     {
-        var dir = GetAppDataDirectory();
+        var dir = UiSettingsStore.GetAppDataDirectory();
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "perf_history.json");
     }
 
-    private static string GetUiSettingsFilePath()
-    {
-        var dir = GetAppDataDirectory();
-        Directory.CreateDirectory(dir);
-        return Path.Combine(dir, "desktop_ui_settings.json");
-    }
-
-    private static string GetAppDataDirectory()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return Path.Combine(baseDir, "CheckMechanic");
-        }
-
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".checkmechanic");
-    }
-
     private void LoadUiSettings()
     {
-        try
-        {
-            var path = GetUiSettingsFilePath();
-            if (!File.Exists(path))
-            {
-                _closeCoreTempOnExitConsent = true;
-                return;
-            }
-
-            var json = File.ReadAllText(path);
-            var settings = JsonSerializer.Deserialize<UiSettings>(json, JsonOptions);
-            _closeCoreTempOnExitConsent = settings?.CloseCoreTempOnExit ?? true;
-        }
-        catch
-        {
-            _closeCoreTempOnExitConsent = true;
-        }
+        var settings = UiSettingsStore.Load();
+        _closeCoreTempOnExitConsent = settings.CloseCoreTempOnExit;
     }
 
     private void SaveUiSettings()
     {
         try
         {
-            var path = GetUiSettingsFilePath();
-            var settings = new UiSettings
-            {
-                CloseCoreTempOnExit = _closeCoreTempOnExitConsent,
-            };
-            File.WriteAllText(path, JsonSerializer.Serialize(settings, JsonOptions));
+            var settings = UiSettingsStore.Load();
+            settings.CloseCoreTempOnExit = _closeCoreTempOnExitConsent;
+            UiSettingsStore.Save(settings);
         }
         catch
         {
@@ -1468,6 +1433,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         fe.ContextMenu.PlacementTarget = fe;
         fe.ContextMenu.IsOpen = true;
+    }
+
+    private void OpenWidgetModeButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var settings = UiSettingsStore.Load();
+            settings.WidgetModeEnabled = true;
+            UiSettingsStore.Save(settings);
+
+            var widget = new WidgetWindow();
+            widget.Show();
+            Application.Current.MainWindow = widget;
+            _isSwitchingToWidgetMode = true;
+            Close();
+        }
+        catch
+        {
+            AddLog("widget mode open failed");
+            RefreshBindings(force: true);
+        }
     }
 
     private void ExportDiagnosticsButton_OnClick(object sender, RoutedEventArgs e)
@@ -1897,6 +1883,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
     {
+        if (_isSwitchingToWidgetMode)
+        {
+            return;
+        }
+
         if (!CloseCoreTempOnExitConsent)
         {
             return;
@@ -1917,8 +1908,4 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private sealed class UiSettings
-    {
-        public bool CloseCoreTempOnExit { get; set; } = true;
-    }
 }

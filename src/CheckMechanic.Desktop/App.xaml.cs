@@ -24,6 +24,13 @@ public partial class App : Application
         };
 
         base.OnStartup(e);
+
+        var settings = UiSettingsStore.Load();
+        Window window = settings.WidgetModeEnabled
+            ? new WidgetWindow()
+            : new MainWindow();
+        MainWindow = window;
+        window.Show();
     }
 
     // App.xaml の DispatcherUnhandledException="App_DispatcherUnhandledException" から呼ばれる
@@ -54,4 +61,3 @@ public partial class App : Application
         }
     }
 }
-
