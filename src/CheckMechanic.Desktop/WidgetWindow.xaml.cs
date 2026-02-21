@@ -55,6 +55,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
     public Brush StatusBadgeBackground { get; set; } = new SolidColorBrush(Color.FromRgb(24, 40, 56));
     public Brush StatusBadgeBorder { get; set; } = new SolidColorBrush(Color.FromRgb(39, 70, 91));
     public string TempSparkPath { get; set; } = string.Empty;
+    public string SparklineTitleText { get; set; } = "Temp 60s";
     public double SparklineWidth { get; set; } = 220;
     public double WidgetBackgroundOpacity { get; set; } = 0.85;
     public double WidgetOpacitySetting
@@ -140,6 +141,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
                 PerfScoreText = "N/A";
                 LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
                 TempSparkPath = string.Empty;
+                SparklineTitleText = "Temp 60s";
                 NotifyAll();
                 return;
             }
@@ -190,6 +192,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             PerfScoreText = "N/A";
             LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
             TempSparkPath = string.Empty;
+            SparklineTitleText = "Temp 60s";
             NotifyAll();
         }
     }
@@ -640,14 +643,26 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         var width = Math.Clamp(SparklineWidth, SparklineMinWidth, SparklineMaxWidth);
         var tempWindow = _tempHistory.ToList();
         var tempValues = tempWindow.Where(x => x.HasValue).Select(x => x!.Value).ToList();
-        var tempMin = tempValues.Count > 0 ? tempValues.Min() : 30;
-        var tempMax = tempValues.Count > 0 ? tempValues.Max() : 100;
-        if (Math.Abs(tempMax - tempMin) < 6)
+        if (tempValues.Count >= 2)
         {
-            tempMax = tempMin + 6;
+            var tempMin = tempValues.Min();
+            var tempMax = tempValues.Max();
+            if (Math.Abs(tempMax - tempMin) < 6)
+            {
+                tempMax = tempMin + 6;
+            }
+
+            TempSparkPath = BuildSparklinePath(tempWindow, width, height, tempMin, tempMax);
+            SparklineTitleText = "Temp 60s";
+            return;
         }
 
-        TempSparkPath = BuildSparklinePath(tempWindow, width, height, tempMin, tempMax);
+        var cpuWindow = _cpuHistory.TakeLast(GetSparkWindowPointLimit()).ToList();
+        var cpuValues = cpuWindow.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        TempSparkPath = cpuValues.Count >= 2
+            ? BuildSparklinePath(cpuWindow, width, height, 0, 100)
+            : string.Empty;
+        SparklineTitleText = "CPU 60s";
     }
 
     private int GetSparkWindowPointLimit()
