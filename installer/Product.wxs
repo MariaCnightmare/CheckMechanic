@@ -1,0 +1,44 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="CheckMechanic"
+           Manufacturer="CheckMechanic"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="2E5A5B4E-1258-45D5-BE95-2E8ED90D8CD2"
+           Scope="perMachine"
+           InstallerVersion="500"
+           Language="1041">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate />
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <ui:WixUI Id="WixUI_InstallDir" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="CheckMechanic" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuCheckMechanicFolder" Name="CheckMechanic" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="AppFiles">
+      <Component Id="DesktopExeComponent" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="DesktopExeFile" Source="$(var.AppPublishDir)\CheckMechanic.Desktop.exe" KeyPath="yes" />
+        <Shortcut Id="StartMenuShortcut"
+                  Directory="ProgramMenuCheckMechanicFolder"
+                  Name="CheckMechanic"
+                  Description="CheckMechanic Desktop"
+                  Advertise="yes" />
+        <RemoveFolder Id="RemoveProgramMenuCheckMechanicFolder"
+                      Directory="ProgramMenuCheckMechanicFolder"
+                      On="uninstall" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="MainFeature" Title="CheckMechanic" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="HarvestedAppPayload" />
+    </Feature>
+  </Package>
+</Wix>

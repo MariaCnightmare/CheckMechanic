@@ -1,0 +1,31 @@
+name: installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Installer version
+        required: true
+        default: "1.0.0"
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build installer zip
+        shell: pwsh
+        run: |
+          ./scripts/build_installer_zip.ps1 -Configuration Release -Version "${{ github.event.inputs.version }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CheckMechanic-Setup
+          path: dist/CheckMechanic-Setup.zip

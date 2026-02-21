@@ -1,0 +1,37 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Bundle Name="CheckMechanic Setup"
+          Manufacturer="CheckMechanic"
+          Version="$(var.BundleVersion)"
+          UpgradeCode="0E1F9A21-EE46-4DAB-A13D-8F0C6BB5C4E0"
+          DisableModify="yes"
+          DisableRemove="no">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication Theme="hyperlinkLicense"
+                                              LicenseUrl="https://github.com/MariaCnightmare/CheckMechanic/blob/main/LICENSE"
+                                              SuppressOptionsUI="no"
+                                              ShowVersion="yes" />
+    </BootstrapperApplication>
+
+    <WixVariable Id="WixStdbaHelpUrl" Value="$(var.CoreTempOfficialUrl)" />
+
+    <!-- Core Temp detection: confirmed registry key on x64 -->
+    <util:RegistrySearch Id="CoreTempUninstallKey"
+                         Root="HKLM"
+                         Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{086D343F-8E78-4AFC-81AC-D6D414AFD8AC}_is1"
+                         Variable="CoreTempRegKeyExists"
+                         Result="exists" />
+
+    <bal:Condition Message="Core Temp is required. Install Core Temp manually from the official page (click Help), then run Setup.exe again."
+                   Condition="CoreTempRegKeyExists = 1" />
+
+    <Chain>
+      <MsiPackage Id="CheckMechanicMsi"
+                  SourceFile="$(var.MsiPath)"
+                  Visible="no"
+                  Vital="yes" />
+    </Chain>
+  </Bundle>
+</Wix>
