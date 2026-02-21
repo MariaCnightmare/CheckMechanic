@@ -7,10 +7,26 @@
         MinWidth="1280"
         MinHeight="720"
         Background="{DynamicResource BackgroundBrush}">
-    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled"
-                  Background="{DynamicResource BackgroundBrush}">
-        <Grid Margin="24" Background="{DynamicResource BackgroundBrush}">
+    <Grid Background="{DynamicResource BackgroundBrush}">
+        <Border IsHitTestVisible="False">
+            <Grid>
+                <Rectangle Fill="{DynamicResource BackgroundPatternBrush}" Opacity="0.14" />
+                <Rectangle>
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                            <GradientStop Color="#1A49FF86" Offset="0" />
+                            <GradientStop Color="#00000000" Offset="0.28" />
+                            <GradientStop Color="#33000000" Offset="1" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+            </Grid>
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Background="Transparent">
+            <Grid Margin="24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -19,19 +35,13 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Border Grid.RowSpan="5"
-                    Background="{DynamicResource BackgroundPatternBrush}"
-                    Opacity="0.28"
-                    IsHitTestVisible="False"
-                    Panel.ZIndex="-1" />
-
             <!-- Header -->
             <Border Grid.Row="0" Style="{DynamicResource CardStyle}" Padding="16" ClipToBounds="True">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="5*" />
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel VerticalAlignment="Center">
@@ -49,42 +59,42 @@
                         <TextBlock Text="{Binding StatusBadgeText}" FontWeight="SemiBold" />
                     </Border>
 
-                    <WrapPanel Grid.Column="2"
-                               Orientation="Horizontal"
-                               HorizontalAlignment="Right"
-                               VerticalAlignment="Center"
-                               ItemHeight="34">
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center">
                         <Button Content="再チェック"
+                                Style="{DynamicResource PrimaryButtonStyle}"
                                 Width="100"
                                 Margin="0,0,8,0"
-                                Click="RecheckButton_OnClick"
-                                Background="{DynamicResource AccentBrush}"
-                                Foreground="#04120F"
-                                BorderBrush="{DynamicResource AccentBrush}" />
+                                Click="RecheckButton_OnClick" />
 
                         <Button Content="Core Temp 起動/前面"
+                                Style="{DynamicResource SecondaryButtonStyle}"
                                 Width="156"
                                 Margin="0,0,8,0"
                                 Click="LaunchOrActivateCoreTempButton_OnClick" />
 
-                        <CheckBox Content="終了時に Core Temp も終了"
-                                  IsChecked="{Binding CloseCoreTempOnExitConsent}"
-                                  Margin="0,0,8,0"
-                                  VerticalAlignment="Center"
-                                  ToolTip="アプリ終了時に Core Temp を自動終了します（手動起動分も対象）" />
-
-                        <Button x:Name="MoreActionsButton" Content="⋯" Width="42" Click="MoreActionsButton_OnClick">
+                        <Button x:Name="MoreActionsButton"
+                                Content="⋯"
+                                Style="{DynamicResource TertiaryButtonStyle}"
+                                Width="42"
+                                Click="MoreActionsButton_OnClick">
                             <Button.ContextMenu>
-                                <ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                     <MenuItem Header="管理者で再試行" Click="RestartHelperAsAdminButton_OnClick" />
                                     <MenuItem Header="SensorHelper再起動" Click="RestartHelperButton_OnClick" />
                                     <MenuItem Header="再接続" Click="ReconnectButton_OnClick" />
+                                    <MenuItem Header="終了時に Core Temp も終了"
+                                              IsCheckable="True"
+                                              IsChecked="{Binding CloseCoreTempOnExitConsent, Mode=TwoWay}"
+                                              ToolTip="アプリ終了時に Core Temp を自動終了します（手動起動分も対象）" />
                                     <Separator />
                                     <MenuItem Header="診断エクスポート" Click="ExportDiagnosticsButton_OnClick" />
                                 </ContextMenu>
                             </Button.ContextMenu>
                         </Button>
-                    </WrapPanel>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -112,7 +122,7 @@
                     <ColumnDefinition Width="2*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Style="{DynamicResource CardStyle}" Margin="0,0,10,0">
+                <Border Grid.Column="0" Style="{DynamicResource CardStyle}" Margin="0,0,12,0">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -137,7 +147,7 @@
                     </Grid>
                 </Border>
 
-                <Border Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="2,0,8,0">
+                <Border Grid.Column="1" Style="{DynamicResource CardStyle}" Margin="0,0,12,0">
                     <StackPanel>
                         <TextBlock Text="CPU" Style="{DynamicResource MetricLabelStyle}" />
                         <TextBlock Text="{Binding CpuKpiText}" Style="{DynamicResource MetricValueStyle}" />
@@ -151,7 +161,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="2" Style="{DynamicResource CardStyle}" Margin="4,0,6,0">
+                <Border Grid.Column="2" Style="{DynamicResource CardStyle}" Margin="0,0,12,0">
                     <StackPanel>
                         <TextBlock Text="GPU" Style="{DynamicResource MetricLabelStyle}" />
                         <TextBlock Text="{Binding GpuKpiText}" Style="{DynamicResource MetricValueStyle}" />
@@ -165,7 +175,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="3" Style="{DynamicResource CardStyle}" Margin="6,0,4,0">
+                <Border Grid.Column="3" Style="{DynamicResource CardStyle}" Margin="0,0,12,0">
                     <StackPanel>
                         <TextBlock Text="Memory" Style="{DynamicResource MetricLabelStyle}" />
                         <TextBlock Text="{Binding MemoryKpiText}" Style="{DynamicResource MetricValueStyle}" />
@@ -179,11 +189,11 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="4" Style="{DynamicResource CardStyle}" Margin="8,0,2,0">
+                <Border Grid.Column="4" Style="{DynamicResource CardStyle}" Margin="0,0,12,0">
                     <StackPanel>
                         <TextBlock Text="Disk I/O" Style="{DynamicResource MetricLabelStyle}" />
                         <TextBlock Text="{Binding DiskText}" Style="{DynamicResource MetricValueStyle}" FontSize="16" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding DiskCapacityText}" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding DiskCapacityText, StringFormat=Free/Total: {0}}" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="Latest: " Style="{DynamicResource MetricSubStyle}" />
                             <TextBlock Text="{Binding DiskLatestText}" Style="{DynamicResource MetricSubStyle}" />
@@ -191,7 +201,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="5" Style="{DynamicResource CardStyle}" Margin="10,0,0,0">
+                <Border Grid.Column="5" Style="{DynamicResource CardStyle}">
                     <StackPanel>
                         <TextBlock Text="PerfScore" Style="{DynamicResource MetricLabelStyle}" />
                         <TextBlock Text="{Binding PerfScoreText}" Style="{DynamicResource GlowValueStyle}" />
@@ -696,7 +706,7 @@
                 </Grid>
 
                 <!-- Right Column -->
-                <Grid Grid.Column="1" Margin="8,0,0,0" Background="{DynamicResource SurfaceBrush}">
+                <Grid Grid.Column="1" Margin="8,0,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="16" />
@@ -756,8 +766,11 @@
 
                                 <TextBlock Grid.Row="5" Text="Storage" Style="{DynamicResource MetricLabelStyle}" />
                                 <StackPanel Grid.Row="5" Grid.Column="1">
-                                    <TextBlock Text="{Binding ProfileStorageText}" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding DiskCapacityText}" Style="{DynamicResource MetricSubStyle}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding ProfileStorageText, StringFormat=Type: {0}}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding DiskCapacityText, StringFormat=Capacity: {0}}" Style="{DynamicResource MetricSubStyle}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding DiskUsageText, StringFormat=Usage: {0}}" Style="{DynamicResource MetricSubStyle}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding ProfileStorageModel, StringFormat=Model: {0}}" Style="{DynamicResource MetricSubStyle}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding ProfileStorageBusType, StringFormat=Bus: {0}}" Style="{DynamicResource MetricSubStyle}" Margin="0,2,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
 
                                 <TextBlock Grid.Row="6" Text="Device" Style="{DynamicResource MetricLabelStyle}" />
@@ -990,6 +1003,7 @@
                     </Border>
                 </Grid>
             </Grid>
-        </Grid>
-    </ScrollViewer>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
 </Window>

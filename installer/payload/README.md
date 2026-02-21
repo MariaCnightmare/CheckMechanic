@@ -1,12 +1,9 @@
-# Core Temp payload (optional)
+# Core Temp payload (disabled by default)
 
-Place Core Temp installer binary here only if redistribution terms allow it.
+Automatic Core Temp installation is disabled in the default Burn flow.
+This folder is kept only for reference/custom forks.
 
 Expected file name:
 - `CoreTempSetup.exe`
 
-Then build bundle with local payload mode:
-
-```powershell
-pwsh ./scripts/build_installer_zip.ps1 -UseLocalCoreTempPayload
-```
+Default build script does not consume this payload.

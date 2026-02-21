@@ -33,6 +33,12 @@ public sealed class SystemProfileDto
     [JsonPropertyName("storage_primary_type")]
     public string? StoragePrimaryType { get; set; }
 
+    [JsonPropertyName("storage_model")]
+    public string? StorageModel { get; set; }
+
+    [JsonPropertyName("storage_bus_type")]
+    public string? StorageBusType { get; set; }
+
     [JsonPropertyName("storage_total_gb_bucket")]
     public string? StorageTotalGbBucket { get; set; }
 

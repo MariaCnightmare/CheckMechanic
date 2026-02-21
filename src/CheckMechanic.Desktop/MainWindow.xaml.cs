@@ -73,6 +73,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string GpuSubText { get; set; } = "--";
     public string DiskText { get; set; } = "未取得";
     public string DiskCapacityText { get; set; } = "容量: --";
+    public string DiskUsageText { get; set; } = "--";
     public string NetText { get; set; } = "未取得";
     public string NetMetaText { get; set; } = "adapter: -";
     public string BatteryText { get; set; } = "N/A";
@@ -185,6 +186,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string ProfileStorageType { get; set; } = "-";
     public string ProfileStorageBucket { get; set; } = "-";
     public string ProfileStorageText { get; set; } = "-";
+    public string ProfileStorageModel { get; set; } = "-";
+    public string ProfileStorageBusType { get; set; } = "-";
     public string ProfileDeviceClass { get; set; } = "-";
     public string ProfileTempProvider { get; set; } = "-";
     public string ProfileMachineVendor { get; set; } = "-";
@@ -359,6 +362,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 SetStatus($"❌ Telemetry HTTP {(int)response.StatusCode}");
                 CpuTemperatureText = "未取得";
                 DiskCapacityText = "容量: --";
+                DiskUsageText = "--";
                 SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
                 AddLog($"telemetry HTTP {(int)response.StatusCode}");
                 RefreshBindings();
@@ -373,6 +377,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 SetStatus("❌ Telemetry parse failed");
                 CpuTemperatureText = "未取得";
                 DiskCapacityText = "容量: --";
+                DiskUsageText = "--";
                 SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
                 AddLog("telemetry parse failed");
                 RefreshBindings();
@@ -396,6 +401,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             DiskText = $"R {FormatRate(payload.Disk.ReadBps)} / W {FormatRate(payload.Disk.WriteBps)}";
             DiskCapacityText = BuildDiskCapacityText(payload.Disk.TotalGb, payload.Disk.FreeGb);
+            DiskUsageText = BuildDiskUsageText(payload.Disk.TotalGb, payload.Disk.FreeGb);
 
             NetText = $"↓ {FormatRate(payload.Net.RecvBps)}  ↑ {FormatRate(payload.Net.SentBps)}";
             if (!string.IsNullOrWhiteSpace(payload.Net.ActiveAdapterName))
@@ -487,6 +493,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             CpuTemperatureText = "未取得";
             DiskCapacityText = "容量: --";
+            DiskUsageText = "--";
             TempLatestText = "--";
             TempRingCenterText = "R";
             TempRingArcData = string.Empty;
@@ -501,6 +508,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             CpuTemperatureText = "未取得";
             DiskCapacityText = "容量: --";
+            DiskUsageText = "--";
             TempLatestText = "--";
             TempRingCenterText = "R";
             TempRingArcData = string.Empty;
@@ -545,6 +553,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ProfileStorageType = profile.StoragePrimaryType ?? "-";
             ProfileStorageBucket = profile.StorageTotalGbBucket ?? "-";
             ProfileStorageText = $"{ProfileStorageType} / {ProfileStorageBucket}";
+            ProfileStorageModel = profile.StorageModel ?? "-";
+            ProfileStorageBusType = profile.StorageBusType ?? "-";
             ProfileDeviceClass = profile.DeviceClass ?? "-";
             ProfileTempProvider = profile.TempProvider ?? "-";
             ProfileMachineVendor = profile.MachineVendor ?? "-";
@@ -568,6 +578,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ProfileStorageType = "-";
             ProfileStorageBucket = "-";
             ProfileStorageText = "-";
+            ProfileStorageModel = "-";
+            ProfileStorageBusType = "-";
             ProfileDeviceClass = "-";
             ProfileTempProvider = "-";
             ProfileMachineVendor = "-";
@@ -1269,6 +1281,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var free = freeGb.HasValue ? $"{freeGb.Value:F0}" : "?";
         var total = totalGb.HasValue ? $"{totalGb.Value:F0}" : "?";
         return $"容量: Free {free} GB / Total {total} GB";
+    }
+
+    private static string BuildDiskUsageText(double? totalGb, double? freeGb)
+    {
+        if (!totalGb.HasValue || !freeGb.HasValue || totalGb.Value <= 0)
+        {
+            return "--";
+        }
+
+        var usedPercent = Math.Clamp(((totalGb.Value - freeGb.Value) / totalGb.Value) * 100d, 0, 100);
+        return $"{usedPercent:F1}%";
     }
 
     private bool TryStartHelper(bool runAsAdmin = false)

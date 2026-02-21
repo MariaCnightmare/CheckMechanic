@@ -100,7 +100,9 @@ dotnet run --project src/CheckMechanic.Desktop/CheckMechanic.Desktop.csproj
 pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -PublishSingleFile $true
 ```
 
-- 既定では Core Temp インストーラを公式URLから取得して導入
+- 既定では Core Temp の自動導入は行わない（手動インストール必須）
+- Setup は Core Temp の導入有無のみ検出し、未導入なら公式URL案内して終了
+- 自動導入を行わない理由: 追加広告ショートカット（例: `Goodgame Empire.url`）の回避
 - Core Temp の再配布条件はライセンス要確認（既定は同梱しない）
 
 ### API quick check

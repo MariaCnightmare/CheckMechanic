@@ -56,11 +56,13 @@ _ = Task.Run(() =>
             }
             Thread.Sleep(200);
         }
+
         lock (monitorSync)
         {
             monitor = m;
             sensorInitError = null;
         }
+
         Log("sensor backend initialized");
     }
     catch (Exception ex)
@@ -70,6 +72,7 @@ _ = Task.Run(() =>
             monitor = null;
             sensorInitError = "sensor backend init failed";
         }
+
         Log($"sensor backend init failed: {ex.GetType().Name}: {ex.Message}");
     }
 });
@@ -151,6 +154,7 @@ while (listener.IsListening)
                     Disk = telemetrySampler.ReadDiskTelemetry(),
                     Net = telemetrySampler.ReadNetworkTelemetry(),
                     Gpu = ReadGpuTelemetry(currentMonitor),
+                    Battery = telemetrySampler.ReadBatteryTelemetry(),
                 };
                 await WriteJsonAsync(ctx.Response, 200, body);
                 return;
@@ -233,6 +237,14 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
     var coreInfo = ReadCpuCoreInfo();
     var providerErrors = new List<string>();
 
+    var lhmTemps = ReadLhmCpuTempHints(monitor);
+    var clockMhz = ReadCpuClockMhz(monitor, out var clockProviderError);
+    var powerW = ReadCpuPowerW(monitor);
+    if (!string.IsNullOrWhiteSpace(clockProviderError))
+    {
+        providerErrors.Add($"clock:{clockProviderError}");
+    }
+
     if (TryReadCoreTempTemperature(out var coreTempValue, out var coreTempLabel, out var coreTempError))
     {
         return new CpuTelemetry
@@ -242,6 +254,10 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
             LogicalCores = coreInfo.LogicalCores,
             PhysicalCores = coreInfo.PhysicalCores,
             Brand = coreInfo.Brand,
+            ClockMhz = clockMhz,
+            PowerW = powerW,
+            TempPackageC = coreTempValue,
+            TempCoreMaxC = lhmTemps.CoreMaxC ?? coreTempValue,
             Label = coreTempLabel,
             Source = "CoreTempSharedMemory",
             ProviderUsed = "coretemp",
@@ -269,7 +285,11 @@ static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
         LogicalCores = coreInfo.LogicalCores,
         PhysicalCores = coreInfo.PhysicalCores,
         Brand = coreInfo.Brand,
-        Label = null,
+        ClockMhz = clockMhz,
+        PowerW = powerW,
+        TempPackageC = lhmTemps.PackageC,
+        TempCoreMaxC = lhmTemps.CoreMaxC,
+        Label = lhmTemps.Label,
         Source = "unavailable",
         ProviderUsed = null,
         Error = "temperature unavailable",
@@ -282,10 +302,19 @@ static GpuTelemetry ReadGpuTelemetry(Computer? monitor)
 {
     var name = ReadGpuName();
     var util = ReadGpuUtilPercentFromLhm(monitor) ?? ReadGpuUtilPercentFromPerformanceCounter();
+    var (coreClock, memClock) = ReadGpuClocksFromLhm(monitor);
+
     return new GpuTelemetry
     {
         Name = name,
+        Vendor = InferGpuVendor(name),
+        DriverVersion = ReadGpuDriverVersion(),
         UtilPercent = util,
+        VramUsedMb = ReadGpuVramUsedMb(),
+        VramTotalMb = ReadGpuVramTotalMb(),
+        TemperatureC = ReadGpuTemperatureFromLhm(monitor),
+        CoreClockMhz = coreClock,
+        MemoryClockMhz = memClock,
     };
 }
 
@@ -300,7 +329,7 @@ static SystemProfileDto BuildSystemProfile(CpuTelemetry cpu, TelemetrySampler sa
         : null;
 
     var memory = sampler.ReadMemoryTelemetry();
-    var memoryGb = memory.TotalBytes.HasValue ? Math.Round(memory.TotalBytes.Value / 1024d / 1024d / 1024d) : (double?)null;
+    var storage = ReadPrimaryStorageInfo();
 
     return new SystemProfileDto
     {
@@ -309,12 +338,18 @@ static SystemProfileDto BuildSystemProfile(CpuTelemetry cpu, TelemetrySampler sa
         CpuBrand = cpu.Brand,
         PhysicalCores = cpu.PhysicalCores,
         LogicalCores = cpu.LogicalCores,
-        MemoryTotalGbBucket = BucketByGb(memoryGb),
+        MemoryTotalGbBucket = BucketByGb(memory.TotalGb),
         GpuName = ReadGpuName(),
-        StoragePrimaryType = ReadStoragePrimaryType(),
+        GpuDriverVersion = ReadGpuDriverVersion(),
+        StoragePrimaryType = storage.Type,
+        StorageModel = storage.Model,
+        StorageBusType = storage.BusType,
         StorageTotalGbBucket = BucketByGb(ReadSystemDriveTotalGb()),
         DeviceClass = DetectDeviceClass(),
         TempProvider = string.IsNullOrWhiteSpace(cpu.ProviderUsed) ? "unavailable" : cpu.ProviderUsed,
+        MachineVendor = ReadMachineVendor(),
+        MachineModel = ReadMachineModel(),
+        UptimeHours = ReadUptimeHours(),
     };
 }
 
@@ -341,6 +376,7 @@ static List<TempSensorSnapshot> CollectTemperatureSensors(Computer monitor)
     {
         WalkHardware(hw, hw.Name, sensors);
     }
+
     return sensors;
 }
 
@@ -351,6 +387,7 @@ static void WalkHardware(IHardware hw, string path, List<TempSensorSnapshot> sen
     {
         sensors.Add(new TempSensorSnapshot(path, s.Name, s.Value, s.Min, s.Max));
     }
+
     foreach (var sub in hw.SubHardware)
     {
         WalkHardware(sub, $"{path} > {sub.Name}", sensors);
@@ -378,8 +415,7 @@ static double? ReadCpuUtilization(Computer? monitor)
             }
         }
 
-        var total = loadSensors.FirstOrDefault(s =>
-            s.Name.Contains("total", StringComparison.OrdinalIgnoreCase) && s.Value is not null);
+        var total = loadSensors.FirstOrDefault(s => s.Name.Contains("total", StringComparison.OrdinalIgnoreCase) && s.Value is not null);
         if (total?.Value is float totalValue)
         {
             return totalValue;
@@ -414,6 +450,7 @@ static CpuCoreInfo ReadCpuCoreInfo()
         var brand = first["Name"]?.ToString()?.Trim();
         var physical = items.Sum(x => Convert.ToInt32(x["NumberOfCores"] ?? 0));
         var logical = items.Sum(x => Convert.ToInt32(x["NumberOfLogicalProcessors"] ?? 0));
+
         return new CpuCoreInfo(
             logical > 0 ? logical : Environment.ProcessorCount,
             physical > 0 ? physical : null,
@@ -425,13 +462,179 @@ static CpuCoreInfo ReadCpuCoreInfo()
     }
 }
 
+static (double? PackageC, double? CoreMaxC, string? Label) ReadLhmCpuTempHints(Computer? monitor)
+{
+    if (monitor is null)
+    {
+        return (null, null, null);
+    }
+
+    try
+    {
+        var candidates = CollectTemperatureSensors(monitor).Where(s => IsCpuLike(s.HardwarePath, s.SensorName)).ToList();
+        if (candidates.Count == 0)
+        {
+            return (null, null, null);
+        }
+
+        static double? FromSensorValue(TempSensorSnapshot s)
+        {
+            if (s.Value is float sv && sv is > -40 and < 150) return sv;
+            if (s.Max is float smx && smx is > -40 and < 150) return smx;
+            if (s.Min is float smn && smn is > -40 and < 150) return smn;
+            return null;
+        }
+
+        var package = candidates.FirstOrDefault(s => s.SensorName.Contains("package", StringComparison.OrdinalIgnoreCase));
+        var packageValue = package is null ? null : FromSensorValue(package);
+
+        var coreMax = candidates
+            .Where(s => s.SensorName.Contains("core max", StringComparison.OrdinalIgnoreCase) || s.SensorName.Contains("core", StringComparison.OrdinalIgnoreCase))
+            .Select(FromSensorValue)
+            .Where(v => v.HasValue)
+            .Select(v => v!.Value)
+            .DefaultIfEmpty(double.NaN)
+            .Max();
+
+        var coreMaxValue = double.IsNaN(coreMax) ? (double?)null : coreMax;
+        var label = package?.SensorName ?? candidates[0].SensorName;
+        return (packageValue, coreMaxValue, label);
+    }
+    catch
+    {
+        return (null, null, null);
+    }
+}
+
+static double? ReadCpuClockMhz(Computer? monitor, out string? providerError)
+{
+    providerError = null;
+
+    if (monitor is not null)
+    {
+        try
+        {
+            var clocks = new List<float>();
+            foreach (var hw in monitor.Hardware.Where(h => h.HardwareType == HardwareType.Cpu))
+            {
+                hw.Update();
+                clocks.AddRange(hw.Sensors.Where(s => s.SensorType == SensorType.Clock && s.Value is not null).Select(s => s.Value!.Value));
+            }
+
+            if (clocks.Count > 0)
+            {
+                return clocks.Average();
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    try
+    {
+        using var searcher = new ManagementObjectSearcher("SELECT CurrentClockSpeed FROM Win32_Processor");
+        var values = searcher.Get().Cast<ManagementObject>()
+            .Select(x => x["CurrentClockSpeed"])
+            .Where(x => x is not null)
+            .Select(Convert.ToDouble)
+            .ToList();
+        if (values.Count > 0)
+        {
+            return values.Average();
+        }
+    }
+    catch
+    {
+    }
+
+    try
+    {
+        using var searcher = new ManagementObjectSearcher("SELECT ProcessorFrequency FROM Win32_PerfFormattedData_Counters_ProcessorInformation WHERE Name='_Total'");
+        var values = searcher.Get().Cast<ManagementObject>()
+            .Select(x => x["ProcessorFrequency"])
+            .Where(x => x is not null)
+            .Select(Convert.ToDouble)
+            .Where(x => x > 0)
+            .ToList();
+        if (values.Count > 0)
+        {
+            return values.Average();
+        }
+    }
+    catch
+    {
+    }
+
+    try
+    {
+        using var perf = new PerformanceCounter("Processor Information", "% Processor Performance", "_Total", true);
+        perf.NextValue();
+        Thread.Sleep(200);
+        var percentPerf = perf.NextValue();
+        if (percentPerf > 0)
+        {
+            using var baseFreqSearcher = new ManagementObjectSearcher("SELECT MaxClockSpeed FROM Win32_Processor");
+            var baseFreq = baseFreqSearcher.Get().Cast<ManagementObject>()
+                .Select(x => x["MaxClockSpeed"])
+                .Where(x => x is not null)
+                .Select(Convert.ToDouble)
+                .Where(x => x > 0)
+                .DefaultIfEmpty(0)
+                .Average();
+            if (baseFreq > 0)
+            {
+                return baseFreq * (percentPerf / 100d);
+            }
+        }
+    }
+    catch
+    {
+    }
+
+    providerError = "CPU_CLOCK_UNAVAILABLE";
+    return null;
+}
+
+static double? ReadCpuPowerW(Computer? monitor)
+{
+    if (monitor is null)
+    {
+        return null;
+    }
+
+    try
+    {
+        var powerSensors = new List<float>();
+        foreach (var hw in monitor.Hardware.Where(h => h.HardwareType == HardwareType.Cpu))
+        {
+            hw.Update();
+            powerSensors.AddRange(hw.Sensors.Where(s => s.SensorType == SensorType.Power && s.Value is not null).Select(s => s.Value!.Value));
+            foreach (var sub in hw.SubHardware)
+            {
+                sub.Update();
+                powerSensors.AddRange(sub.Sensors.Where(s => s.SensorType == SensorType.Power && s.Value is not null).Select(s => s.Value!.Value));
+            }
+        }
+
+        if (powerSensors.Count == 0)
+        {
+            return null;
+        }
+
+        return powerSensors.Max();
+    }
+    catch
+    {
+        return null;
+    }
+}
+
 static bool TryReadWmiTemperature(out double? tempC, out string? label, out string? errorCode)
 {
     try
     {
-        using var searcher = new ManagementObjectSearcher(
-            @"root\WMI",
-            "SELECT CurrentTemperature, InstanceName FROM MSAcpi_ThermalZoneTemperature");
+        using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT CurrentTemperature, InstanceName FROM MSAcpi_ThermalZoneTemperature");
         var results = searcher.Get();
         foreach (var obj in results.Cast<ManagementObject>())
         {
@@ -530,15 +733,17 @@ static bool TryReadCoreTempTemperature(out double? tempC, out string? label, out
         }
     }
 
-    if (TryFromMapping("CoreTempMappingObject", out tempC, out label, out var baseError))
+    string? baseError;
+    if (TryFromMapping("CoreTempMappingObject", out tempC, out label, out baseError))
     {
-        errorCode = baseError;
+        errorCode = null;
         return true;
     }
 
-    if (TryFromMapping("CoreTempMappingObjectEx", out tempC, out label, out var exError))
+    string? exError;
+    if (TryFromMapping("CoreTempMappingObjectEx", out tempC, out label, out exError))
     {
-        errorCode = exError;
+        errorCode = null;
         return true;
     }
 
@@ -593,15 +798,11 @@ static double? ReadGpuUtilPercentFromLhm(Computer? monitor)
         foreach (var hw in monitor.Hardware.Where(h => h.HardwareType == HardwareType.GpuAmd || h.HardwareType == HardwareType.GpuNvidia || h.HardwareType == HardwareType.GpuIntel))
         {
             hw.Update();
-            values.AddRange(hw.Sensors
-                .Where(s => s.SensorType == SensorType.Load && s.Value is not null)
-                .Select(s => s.Value!.Value));
+            values.AddRange(hw.Sensors.Where(s => s.SensorType == SensorType.Load && s.Value is not null).Select(s => s.Value!.Value));
             foreach (var sub in hw.SubHardware)
             {
                 sub.Update();
-                values.AddRange(sub.Sensors
-                    .Where(s => s.SensorType == SensorType.Load && s.Value is not null)
-                    .Select(s => s.Value!.Value));
+                values.AddRange(sub.Sensors.Where(s => s.SensorType == SensorType.Load && s.Value is not null).Select(s => s.Value!.Value));
             }
         }
 
@@ -611,6 +812,35 @@ static double? ReadGpuUtilPercentFromLhm(Computer? monitor)
         }
 
         return values.Max();
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static double? ReadGpuTemperatureFromLhm(Computer? monitor)
+{
+    if (monitor is null)
+    {
+        return null;
+    }
+
+    try
+    {
+        var values = new List<float>();
+        foreach (var hw in monitor.Hardware.Where(h => h.HardwareType == HardwareType.GpuAmd || h.HardwareType == HardwareType.GpuNvidia || h.HardwareType == HardwareType.GpuIntel))
+        {
+            hw.Update();
+            values.AddRange(hw.Sensors.Where(s => s.SensorType == SensorType.Temperature && s.Value is not null).Select(s => s.Value!.Value));
+            foreach (var sub in hw.SubHardware)
+            {
+                sub.Update();
+                values.AddRange(sub.Sensors.Where(s => s.SensorType == SensorType.Temperature && s.Value is not null).Select(s => s.Value!.Value));
+            }
+        }
+
+        return values.Count > 0 ? values.Max() : null;
     }
     catch
     {
@@ -638,7 +868,57 @@ static double? ReadGpuUtilPercentFromPerformanceCounter()
             using var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", name, true);
             sum += counter.NextValue();
         }
+
         return Math.Clamp(sum, 0, 100);
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static double? ReadGpuVramUsedMb()
+{
+    try
+    {
+        var category = new PerformanceCounterCategory("GPU Adapter Memory");
+        var instances = category.GetInstanceNames();
+        double dedicated = 0;
+        double shared = 0;
+        foreach (var name in instances)
+        {
+            using var dedicatedCounter = new PerformanceCounter("GPU Adapter Memory", "Dedicated Usage", name, true);
+            using var sharedCounter = new PerformanceCounter("GPU Adapter Memory", "Shared Usage", name, true);
+            dedicated += dedicatedCounter.NextValue();
+            shared += sharedCounter.NextValue();
+        }
+
+        var bytes = dedicated + shared;
+        return bytes > 0 ? bytes / 1024d / 1024d : null;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static double? ReadGpuVramTotalMb()
+{
+    try
+    {
+        using var searcher = new ManagementObjectSearcher("SELECT AdapterRAM FROM Win32_VideoController");
+        var values = searcher.Get().Cast<ManagementObject>()
+            .Select(x => x["AdapterRAM"])
+            .Where(x => x is not null)
+            .Select(Convert.ToDouble)
+            .Where(x => x > 0)
+            .ToList();
+        if (values.Count == 0)
+        {
+            return null;
+        }
+
+        return values.Max() / 1024d / 1024d;
     }
     catch
     {
@@ -663,7 +943,80 @@ static string? ReadGpuName()
     catch
     {
     }
+
     return null;
+}
+
+static string? ReadGpuDriverVersion()
+{
+    try
+    {
+        using var searcher = new ManagementObjectSearcher("SELECT DriverVersion FROM Win32_VideoController");
+        foreach (var row in searcher.Get().Cast<ManagementObject>())
+        {
+            var version = row["DriverVersion"]?.ToString();
+            if (!string.IsNullOrWhiteSpace(version))
+            {
+                return version.Trim();
+            }
+        }
+    }
+    catch
+    {
+    }
+
+    return null;
+}
+
+static (double? CoreClockMhz, double? MemoryClockMhz) ReadGpuClocksFromLhm(Computer? monitor)
+{
+    if (monitor is null)
+    {
+        return (null, null);
+    }
+
+    try
+    {
+        var coreClocks = new List<float>();
+        var memClocks = new List<float>();
+        foreach (var hw in monitor.Hardware.Where(h => h.HardwareType == HardwareType.GpuAmd || h.HardwareType == HardwareType.GpuNvidia || h.HardwareType == HardwareType.GpuIntel))
+        {
+            hw.Update();
+            foreach (var sensor in hw.Sensors.Where(s => s.SensorType == SensorType.Clock && s.Value is not null))
+            {
+                if (sensor.Name.Contains("memory", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("mem", StringComparison.OrdinalIgnoreCase))
+                {
+                    memClocks.Add(sensor.Value!.Value);
+                }
+                else
+                {
+                    coreClocks.Add(sensor.Value!.Value);
+                }
+            }
+        }
+
+        return (
+            coreClocks.Count > 0 ? coreClocks.Average() : null,
+            memClocks.Count > 0 ? memClocks.Average() : null);
+    }
+    catch
+    {
+        return (null, null);
+    }
+}
+
+static string? InferGpuVendor(string? name)
+{
+    if (string.IsNullOrWhiteSpace(name))
+    {
+        return null;
+    }
+
+    var n = name.ToLowerInvariant();
+    if (n.Contains("nvidia")) return "NVIDIA";
+    if (n.Contains("intel")) return "Intel";
+    if (n.Contains("amd") || n.Contains("radeon")) return "AMD";
+    return "Other";
 }
 
 static double? ReadSystemDriveTotalGb()
@@ -690,27 +1043,77 @@ static double? ReadSystemDriveTotalGb()
     }
 }
 
-static string? ReadStoragePrimaryType()
+static StorageInfo ReadPrimaryStorageInfo()
 {
     try
     {
-        using var searcher = new ManagementObjectSearcher("SELECT Model, MediaType FROM Win32_DiskDrive");
-        foreach (var row in searcher.Get().Cast<ManagementObject>())
+        var root = Path.GetPathRoot(Environment.SystemDirectory)?.TrimEnd('\\');
+        if (!string.IsNullOrWhiteSpace(root))
         {
-            var model = (row["Model"]?.ToString() ?? string.Empty).ToLowerInvariant();
-            var mediaType = (row["MediaType"]?.ToString() ?? string.Empty).ToLowerInvariant();
-            var merged = model + " " + mediaType;
+            using var logicalToPartition = new ManagementObjectSearcher(
+                $"ASSOCIATORS OF {{Win32_LogicalDisk.DeviceID='{root}'}} WHERE AssocClass=Win32_LogicalDiskToPartition");
+            var partition = logicalToPartition.Get().Cast<ManagementObject>().FirstOrDefault();
+            if (partition is not null)
+            {
+                var partitionPath = partition.Path?.Path;
+                if (!string.IsNullOrWhiteSpace(partitionPath))
+                {
+                    using var partitionToDrive = new ManagementObjectSearcher(
+                        $"ASSOCIATORS OF {{{partitionPath}}} WHERE AssocClass=Win32_DiskDriveToDiskPartition");
+                    var disk = partitionToDrive.Get().Cast<ManagementObject>().FirstOrDefault();
+                    if (disk is not null)
+                    {
+                        return BuildStorageInfo(disk);
+                    }
+                }
+            }
+        }
 
-            if (merged.Contains("nvme")) return "NVMe";
-            if (merged.Contains("ssd") || merged.Contains("solid")) return "SSD";
-            if (merged.Contains("hdd") || merged.Contains("sata") || merged.Contains("hard disk")) return "HDD";
+        using var fallbackSearcher = new ManagementObjectSearcher("SELECT Model, MediaType, InterfaceType, PNPDeviceID FROM Win32_DiskDrive");
+        var first = fallbackSearcher.Get().Cast<ManagementObject>().FirstOrDefault();
+        if (first is not null)
+        {
+            return BuildStorageInfo(first);
         }
     }
     catch
     {
     }
 
-    return null;
+    return new StorageInfo(null, null, null);
+}
+
+static StorageInfo BuildStorageInfo(ManagementObject row)
+{
+    var modelRaw = row["Model"]?.ToString()?.Trim();
+    var model = string.IsNullOrWhiteSpace(modelRaw) ? null : modelRaw;
+
+    var mediaType = (row["MediaType"]?.ToString() ?? string.Empty).ToLowerInvariant();
+    var interfaceTypeRaw = (row["InterfaceType"]?.ToString() ?? string.Empty).Trim();
+    var interfaceType = string.IsNullOrWhiteSpace(interfaceTypeRaw) ? null : interfaceTypeRaw;
+    var pnpId = (row["PNPDeviceID"]?.ToString() ?? string.Empty).ToLowerInvariant();
+    var modelLower = (model ?? string.Empty).ToLowerInvariant();
+    var merged = $"{modelLower} {mediaType} {interfaceTypeRaw.ToLowerInvariant()} {pnpId}";
+
+    var type = merged.Contains("nvme")
+        ? "NVMe"
+        : merged.Contains("ssd") || merged.Contains("solid")
+            ? "SSD"
+            : merged.Contains("hdd") || merged.Contains("hard disk") || merged.Contains("sata")
+                ? "HDD"
+                : null;
+
+    string? busType = null;
+    if (merged.Contains("nvme"))
+    {
+        busType = "NVMe";
+    }
+    else if (!string.IsNullOrWhiteSpace(interfaceType))
+    {
+        busType = interfaceType.ToUpperInvariant();
+    }
+
+    return new StorageInfo(type, model, busType);
 }
 
 static string DetectDeviceClass()
@@ -727,8 +1130,7 @@ static string DetectDeviceClass()
         using var enclosureSearcher = new ManagementObjectSearcher("SELECT ChassisTypes FROM Win32_SystemEnclosure");
         foreach (var row in enclosureSearcher.Get().Cast<ManagementObject>())
         {
-            var arr = row["ChassisTypes"] as ushort[];
-            if (arr is null)
+            if (row["ChassisTypes"] is not ushort[] arr)
             {
                 continue;
             }
@@ -744,6 +1146,48 @@ static string DetectDeviceClass()
     }
 
     return "desktop";
+}
+
+static string? ReadMachineVendor()
+{
+    try
+    {
+        using var searcher = new ManagementObjectSearcher("SELECT Manufacturer FROM Win32_ComputerSystem");
+        var row = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
+        var vendor = row?["Manufacturer"]?.ToString()?.Trim();
+        return string.IsNullOrWhiteSpace(vendor) ? null : vendor;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static string? ReadMachineModel()
+{
+    try
+    {
+        using var searcher = new ManagementObjectSearcher("SELECT Model FROM Win32_ComputerSystem");
+        var row = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
+        var model = row?["Model"]?.ToString()?.Trim();
+        return string.IsNullOrWhiteSpace(model) ? null : model;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static double? ReadUptimeHours()
+{
+    try
+    {
+        return Math.Round(Environment.TickCount64 / 1000d / 3600d, 1);
+    }
+    catch
+    {
+        return null;
+    }
 }
 
 static string? BucketByGb(double? gb)
@@ -788,6 +1232,9 @@ sealed class TelemetrySampler : IDisposable
             TotalBytes = total,
             UsedBytes = used,
             UtilPercent = util,
+            TotalGb = total / 1024d / 1024d / 1024d,
+            UsedGb = used / 1024d / 1024d / 1024d,
+            AvailableGb = avail / 1024d / 1024d / 1024d,
         };
     }
 
@@ -804,11 +1251,17 @@ sealed class TelemetrySampler : IDisposable
             {
                 ReadBps = read >= 0 ? read : null,
                 WriteBps = write >= 0 ? write : null,
+                TotalGb = GetSystemDriveTotalGb(),
+                FreeGb = GetSystemDriveFreeGb(),
             };
         }
         catch
         {
-            return new DiskTelemetry();
+            return new DiskTelemetry
+            {
+                TotalGb = GetSystemDriveTotalGb(),
+                FreeGb = GetSystemDriveFreeGb(),
+            };
         }
     }
 
@@ -816,24 +1269,21 @@ sealed class TelemetrySampler : IDisposable
     {
         try
         {
+            var upInterfaces = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(nic => nic.OperationalStatus == OperationalStatus.Up)
+                .Where(nic => nic.NetworkInterfaceType is not NetworkInterfaceType.Loopback and not NetworkInterfaceType.Tunnel)
+                .ToList();
+
             long recv = 0;
             long sent = 0;
-            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            foreach (var nic in upInterfaces)
             {
-                if (nic.OperationalStatus != OperationalStatus.Up)
-                {
-                    continue;
-                }
-                if (nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
-                {
-                    continue;
-                }
-
                 var stats = nic.GetIPv4Statistics();
                 recv += stats.BytesReceived;
                 sent += stats.BytesSent;
             }
 
+            var active = upInterfaces.OrderByDescending(n => n.Speed).FirstOrDefault();
             var now = DateTimeOffset.UtcNow;
             if (!_netInitialized)
             {
@@ -841,7 +1291,13 @@ sealed class TelemetrySampler : IDisposable
                 _lastNetTs = now;
                 _lastNetRecv = recv;
                 _lastNetSent = sent;
-                return new NetworkTelemetry { RecvBps = null, SentBps = null };
+                return new NetworkTelemetry
+                {
+                    RecvBps = null,
+                    SentBps = null,
+                    ActiveAdapterName = active?.Name,
+                    LinkSpeedMbps = active is null ? null : active.Speed / 1_000_000d,
+                };
             }
 
             var seconds = Math.Max((now - _lastNetTs).TotalSeconds, 0.001);
@@ -852,11 +1308,45 @@ sealed class TelemetrySampler : IDisposable
             _lastNetRecv = recv;
             _lastNetSent = sent;
 
-            return new NetworkTelemetry { RecvBps = recvBps, SentBps = sentBps };
+            return new NetworkTelemetry
+            {
+                RecvBps = recvBps,
+                SentBps = sentBps,
+                ActiveAdapterName = active?.Name,
+                LinkSpeedMbps = active is null ? null : active.Speed / 1_000_000d,
+            };
         }
         catch
         {
             return new NetworkTelemetry();
+        }
+    }
+
+    public BatteryTelemetry ReadBatteryTelemetry()
+    {
+        try
+        {
+            using var searcher = new ManagementObjectSearcher("SELECT EstimatedChargeRemaining, BatteryStatus FROM Win32_Battery");
+            var battery = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
+            if (battery is null)
+            {
+                return new BatteryTelemetry();
+            }
+
+            var percent = battery["EstimatedChargeRemaining"] is null ? (double?)null : Convert.ToDouble(battery["EstimatedChargeRemaining"]);
+            var status = battery["BatteryStatus"] is null ? (int?)null : Convert.ToInt32(battery["BatteryStatus"]);
+            var isCharging = status is 2 or 6 or 7 or 8 or 9;
+
+            return new BatteryTelemetry
+            {
+                Percent = percent,
+                IsCharging = status.HasValue ? isCharging : null,
+                DischargeW = null,
+            };
+        }
+        catch
+        {
+            return new BatteryTelemetry();
         }
     }
 
@@ -865,7 +1355,57 @@ sealed class TelemetrySampler : IDisposable
         _diskReadCounter?.Dispose();
         _diskWriteCounter?.Dispose();
     }
+
+    private static double? GetSystemDriveTotalGb()
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Environment.SystemDirectory);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return null;
+            }
+
+            var d = new DriveInfo(root);
+            if (!d.IsReady)
+            {
+                return null;
+            }
+
+            return Math.Round(d.TotalSize / 1024d / 1024d / 1024d);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static double? GetSystemDriveFreeGb()
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Environment.SystemDirectory);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return null;
+            }
+
+            var d = new DriveInfo(root);
+            if (!d.IsReady)
+            {
+                return null;
+            }
+
+            return Math.Round(d.AvailableFreeSpace / 1024d / 1024d / 1024d);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
+
+readonly record struct StorageInfo(string? Type, string? Model, string? BusType);
 
 static class NativeMethods
 {
@@ -906,18 +1446,21 @@ struct CoreTempSharedData
 {
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
     public uint[] Loads;
+
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
     public uint[] TjMax;
+
     public uint CoreCount;
     public uint CpuCount;
+
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
     public float[] Temps;
+
     public float Vid;
     public float CpuSpeed;
     public float FsbSpeed;
     public float Multiplier;
+
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 100)]
     public string CpuName;
-    public byte Fahrenheit;
-    public byte DeltaToTjMax;
 }
