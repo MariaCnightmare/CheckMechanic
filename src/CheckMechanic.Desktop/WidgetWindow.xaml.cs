@@ -19,8 +19,9 @@ namespace CheckMechanic.Desktop;
 public partial class WidgetWindow : Window, INotifyPropertyChanged
 {
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
-    private const int SparklinePoints = 30;
-    private const int HistoryWindowSeconds = 3600;
+    private const int SparkWindowSeconds = 60;
+    private const double SparklineMinWidth = 120;
+    private const double SparklineMaxWidth = 340;
     private const int GwlExStyle = -20;
     private const int WsExTransparent = 0x20;
     private const int WmHotKey = 0x0312;
@@ -40,6 +41,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
     private readonly Queue<double?> _netHistory = new();
     private bool _isSwitchingToFullUi;
     private bool _isHovering;
+    private bool _hasInputFocus;
     private bool _clickThroughEnabled;
     private bool _hotKeyRegistered;
     private double _widgetOpacitySetting = 0.85;
@@ -48,13 +50,12 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
     public string CpuTemperatureText { get; set; } = "--";
     public string CpuMemText { get; set; } = "-- / --";
     public string PerfScoreText { get; set; } = "--";
-    public string TempMinMaxHourText { get; set; } = "-- / --";
     public string LastUpdateText { get; set; } = "--";
     public string StatusBadgeText { get; set; } = "STARTING";
     public Brush StatusBadgeBackground { get; set; } = new SolidColorBrush(Color.FromRgb(24, 40, 56));
     public Brush StatusBadgeBorder { get; set; } = new SolidColorBrush(Color.FromRgb(39, 70, 91));
     public string TempSparkPath { get; set; } = string.Empty;
-    public string CpuSparkPath { get; set; } = string.Empty;
+    public double SparklineWidth { get; set; } = 220;
     public double WidgetBackgroundOpacity { get; set; } = 0.85;
     public double WidgetOpacitySetting
     {
@@ -137,10 +138,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
                 CpuTemperatureText = "--";
                 CpuMemText = "-- / --";
                 PerfScoreText = "N/A";
-                TempMinMaxHourText = "-- / --";
                 LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
                 TempSparkPath = string.Empty;
-                CpuSparkPath = string.Empty;
                 NotifyAll();
                 return;
             }
@@ -159,17 +158,12 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             double? netTotal = (payload.Net.RecvBps.HasValue || payload.Net.SentBps.HasValue)
                 ? payload.Net.RecvBps.GetValueOrDefault() + payload.Net.SentBps.GetValueOrDefault()
                 : null;
-            AppendWithLimit(_tempHistory, payload.Cpu.TempC, GetHourWindowPointLimit());
+            AppendWithLimit(_tempHistory, payload.Cpu.TempC, GetSparkWindowPointLimit());
             AppendWithLimit(_cpuHistory, payload.Cpu.UtilPercent, 60);
             AppendWithLimit(_memHistory, payload.Memory.UtilPercent, 60);
             AppendWithLimit(_diskHistory, diskTotal, 60);
             AppendWithLimit(_netHistory, netTotal, 60);
             UpdateSparklinePaths();
-
-            var tempValues = _tempHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
-            TempMinMaxHourText = tempValues.Count > 0
-                ? $"{tempValues.Min():F1}°C / {tempValues.Max():F1}°C"
-                : "-- / --";
 
             var cpuValues = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
             var memValues = _memHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
@@ -194,10 +188,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             CpuTemperatureText = "--";
             CpuMemText = "-- / --";
             PerfScoreText = "N/A";
-            TempMinMaxHourText = "-- / --";
             LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
             TempSparkPath = string.Empty;
-            CpuSparkPath = string.Empty;
             NotifyAll();
         }
     }
@@ -548,10 +540,25 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         NotifyAll();
     }
 
+    private void WidgetWindow_OnActivated(object? sender, EventArgs e)
+    {
+        _hasInputFocus = true;
+        UpdateBackgroundOpacity();
+        NotifyAll();
+    }
+
+    private void WidgetWindow_OnDeactivated(object? sender, EventArgs e)
+    {
+        _hasInputFocus = false;
+        UpdateBackgroundOpacity();
+        NotifyAll();
+    }
+
     private void UpdateBackgroundOpacity()
     {
-        var boost = _isHovering ? 0.10 : 0.0;
-        WidgetBackgroundOpacity = Math.Min(0.95, WidgetOpacitySetting + boost);
+        WidgetBackgroundOpacity = (_isHovering || _hasInputFocus)
+            ? 0.95
+            : Math.Clamp(WidgetOpacitySetting, 0.65, 0.95);
     }
 
     private void ApplyClickThrough()
@@ -628,10 +635,10 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
 
     private void UpdateSparklinePaths()
     {
-        const double width = 152;
-        const double height = 20;
+        const double height = 24;
 
-        var tempWindow = _tempHistory.TakeLast(SparklinePoints).ToList();
+        var width = Math.Clamp(SparklineWidth, SparklineMinWidth, SparklineMaxWidth);
+        var tempWindow = _tempHistory.ToList();
         var tempValues = tempWindow.Where(x => x.HasValue).Select(x => x!.Value).ToList();
         var tempMin = tempValues.Count > 0 ? tempValues.Min() : 30;
         var tempMax = tempValues.Count > 0 ? tempValues.Max() : 100;
@@ -641,13 +648,25 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         }
 
         TempSparkPath = BuildSparklinePath(tempWindow, width, height, tempMin, tempMax);
-        CpuSparkPath = BuildSparklinePath(_cpuHistory.TakeLast(SparklinePoints), width, height, 0, 100);
     }
 
-    private int GetHourWindowPointLimit()
+    private int GetSparkWindowPointLimit()
     {
         var seconds = Math.Max(1.0, _timer.Interval.TotalSeconds);
-        return (int)Math.Ceiling(HistoryWindowSeconds / seconds);
+        return (int)Math.Ceiling(SparkWindowSeconds / seconds);
+    }
+
+    private void TempSparkHost_OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var next = Math.Clamp(e.NewSize.Width - 4, SparklineMinWidth, SparklineMaxWidth);
+        if (Math.Abs(SparklineWidth - next) < 0.5)
+        {
+            return;
+        }
+
+        SparklineWidth = next;
+        UpdateSparklinePaths();
+        NotifyAll();
     }
 
     private static string BuildSparklinePath(IEnumerable<double?> values, double width, double height, double minY, double maxY)

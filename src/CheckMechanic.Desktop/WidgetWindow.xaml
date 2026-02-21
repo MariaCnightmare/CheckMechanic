@@ -2,22 +2,33 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="CheckMechanic Widget"
-        Width="364"
-        Height="168"
-        MinWidth="340"
-        MinHeight="160"
-        MaxWidth="420"
-        MaxHeight="220"
+        Width="320"
+        Height="150"
+        MinWidth="260"
+        MinHeight="136"
+        MaxWidth="360"
+        MaxHeight="190"
         Background="Transparent"
         AllowsTransparency="True"
         WindowStyle="None"
-        ResizeMode="NoResize"
+        ResizeMode="CanResizeWithGrip"
         Topmost="True"
         ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
         ContextMenuOpening="WidgetWindow_ContextMenuOpening"
         MouseEnter="WidgetWindow_MouseEnter"
         MouseLeave="WidgetWindow_MouseLeave"
+        Activated="WidgetWindow_OnActivated"
+        Deactivated="WidgetWindow_OnDeactivated"
         MouseLeftButtonDown="WidgetRoot_MouseLeftButtonDown">
+    <Window.Resources>
+        <DropShadowEffect x:Key="WidgetTextShadow"
+                          Color="#11000000"
+                          BlurRadius="6"
+                          ShadowDepth="0"
+                          Opacity="0.95" />
+    </Window.Resources>
     <Window.ContextMenu>
         <ContextMenu x:Name="WidgetContextMenu">
             <MenuItem Header="フルUIを開く" Click="OpenFullUiMenuItem_OnClick" />
@@ -48,9 +59,9 @@
             <MenuItem Header="閉じる" Click="CloseMenuItem_OnClick" />
         </ContextMenu>
     </Window.ContextMenu>
-    <Border Margin="6"
-            Padding="8"
-            CornerRadius="14"
+    <Border Margin="4"
+            Padding="6"
+            CornerRadius="12"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1">
         <Grid>
@@ -61,7 +72,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Border Grid.RowSpan="4"
-                    CornerRadius="12"
+                    CornerRadius="10"
                     Background="{DynamicResource SurfaceBrush}"
                     Opacity="{Binding WidgetBackgroundOpacity}" />
 
@@ -79,7 +90,10 @@
                             Margin="0,0,8,0">
                         <TextBlock Text="{Binding StatusBadgeText}" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextBrush}" />
                     </Border>
-                    <TextBlock Text="Widget Mode" Style="{DynamicResource MetricSubStyle}" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" />
+                    <TextBlock Text="Widget"
+                               Style="{DynamicResource MetricSubStyle}"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextBrush}" />
                 </StackPanel>
 
                 <Button Grid.Column="1"
@@ -90,93 +104,95 @@
                         Click="MenuButton_OnClick" />
             </Grid>
 
-            <Grid Grid.Row="1" Margin="0,6,0,4">
+            <Grid Grid.Row="1" Margin="0,4,0,2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="88" />
-                    <ColumnDefinition Width="8" />
-                    <ColumnDefinition Width="*" MinWidth="170" />
+                    <ColumnDefinition Width="72" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="*" MinWidth="132" />
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <TextBlock Text="Temp" Style="{DynamicResource MetricSubStyle}" Foreground="{DynamicResource TextBrush}" />
-                <TextBlock Grid.Column="2"
-                           Text="{Binding CpuTemperatureText}"
-                           FontSize="20"
-                           FontWeight="SemiBold"
-                           TextAlignment="Right"
-                           TextTrimming="CharacterEllipsis"
-                           ToolTip="{Binding CpuTemperatureText}"
-                           Foreground="{DynamicResource AccentBrush}" />
+                <Border Grid.Column="2"
+                        Background="#44202621"
+                        CornerRadius="4"
+                        Padding="5,1,5,1"
+                        MinWidth="132">
+                    <TextBlock Text="{Binding CpuTemperatureText}"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               TextAlignment="Right"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding CpuTemperatureText}"
+                               Foreground="{DynamicResource AccentBrush}"
+                               Effect="{StaticResource WidgetTextShadow}" />
+                </Border>
 
-                <TextBlock Grid.Row="1" Text="CPU / Mem" Style="{DynamicResource MetricSubStyle}" Margin="0,5,0,0" Foreground="{DynamicResource TextBrush}" />
-                <TextBlock Grid.Row="1"
-                           Grid.Column="2"
-                           Text="{Binding CpuMemText}"
-                           Style="{DynamicResource MetricSubStyle}"
-                           Margin="0,5,0,0"
-                           TextAlignment="Right"
-                           TextTrimming="CharacterEllipsis"
-                           ToolTip="{Binding CpuMemText}"
-                           Foreground="{DynamicResource TextBrush}" />
+                <TextBlock Grid.Row="1" Text="CPU/Mem" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
+                <Border Grid.Row="1"
+                        Grid.Column="2"
+                        Background="#44202621"
+                        CornerRadius="4"
+                        Padding="5,1,5,1"
+                        Margin="0,4,0,0"
+                        MinWidth="132">
+                    <TextBlock Text="{Binding CpuMemText}"
+                               FontSize="11"
+                               TextAlignment="Right"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding CpuMemText}"
+                               Foreground="{DynamicResource TextBrush}"
+                               Effect="{StaticResource WidgetTextShadow}" />
+                </Border>
 
-                <TextBlock Grid.Row="2" Text="PerfScore" Style="{DynamicResource MetricSubStyle}" Margin="0,5,0,0" Foreground="{DynamicResource TextBrush}" />
-                <TextBlock Grid.Row="2"
-                           Grid.Column="2"
-                           Text="{Binding PerfScoreText}"
-                           Style="{DynamicResource MetricSubStyle}"
-                           Margin="0,5,0,0"
-                           TextAlignment="Right"
-                           TextTrimming="CharacterEllipsis"
-                           ToolTip="{Binding PerfScoreText}"
-                           Foreground="{DynamicResource TextBrush}" />
-
-                <TextBlock Grid.Row="3" Text="Min/Max 1h" Style="{DynamicResource MetricSubStyle}" Margin="0,5,0,0" Foreground="{DynamicResource TextBrush}" />
-                <TextBlock Grid.Row="3"
-                           Grid.Column="2"
-                           Text="{Binding TempMinMaxHourText}"
-                           Style="{DynamicResource MetricSubStyle}"
-                           Margin="0,5,0,0"
-                           TextAlignment="Right"
-                           TextTrimming="CharacterEllipsis"
-                           ToolTip="{Binding TempMinMaxHourText}"
-                           Foreground="{DynamicResource TextBrush}" />
+                <TextBlock Grid.Row="2" Text="PerfScore" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" Foreground="{DynamicResource TextBrush}" />
+                <Border Grid.Row="2"
+                        Grid.Column="2"
+                        Background="#44202621"
+                        CornerRadius="4"
+                        Padding="5,1,5,1"
+                        Margin="0,4,0,0"
+                        MinWidth="132">
+                    <TextBlock Text="{Binding PerfScoreText}"
+                               FontSize="11"
+                               TextAlignment="Right"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding PerfScoreText}"
+                               Foreground="{DynamicResource TextBrush}"
+                               Effect="{StaticResource WidgetTextShadow}" />
+                </Border>
             </Grid>
 
-            <Grid Grid.Row="2" Margin="0,6,0,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                    <TextBlock Text="Temp 30s" Style="{DynamicResource MetricSubStyle}" FontSize="11" />
-                    <Border Height="22" CornerRadius="4" Background="{DynamicResource Surface2Brush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                        <Canvas Width="152" Height="20" ClipToBounds="True">
-                            <Path Data="{Binding TempSparkPath}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.6" />
-                        </Canvas>
-                    </Border>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Margin="6,0,0,0">
-                    <TextBlock Text="CPU 30s" Style="{DynamicResource MetricSubStyle}" FontSize="11" />
-                    <Border Height="22" CornerRadius="4" Background="{DynamicResource Surface2Brush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                        <Canvas Width="152" Height="20" ClipToBounds="True">
-                            <Path Data="{Binding CpuSparkPath}" Stroke="{DynamicResource SuccessBrush}" StrokeThickness="1.6" />
-                        </Canvas>
-                    </Border>
-                </StackPanel>
-            </Grid>
+            <StackPanel Grid.Row="2" Margin="0,2,0,2">
+                <TextBlock Text="Temp 60s"
+                           Style="{DynamicResource MetricSubStyle}"
+                           FontSize="10"
+                           Foreground="{DynamicResource TextBrush}" />
+                <Border x:Name="TempSparkHost"
+                        Height="28"
+                        Margin="0,1,0,0"
+                        CornerRadius="4"
+                        Background="{DynamicResource Surface2Brush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        SizeChanged="TempSparkHost_OnSizeChanged">
+                    <Canvas Width="{Binding SparklineWidth}" Height="24" ClipToBounds="True">
+                        <Path Data="{Binding TempSparkPath}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.4" />
+                    </Canvas>
+                </Border>
+            </StackPanel>
 
             <TextBlock Grid.Row="3"
                        Text="{Binding LastUpdateText, StringFormat=Updated {0}}"
                        Style="{DynamicResource MetricSubStyle}"
                        HorizontalAlignment="Stretch"
                        TextAlignment="Right"
-                       FontSize="11"
-                       TextTrimming="CharacterEllipsis"
+                       FontSize="10"
+                       Margin="0,2,0,0"
                        Foreground="{DynamicResource TextBrush}" />
         </Grid>
     </Border>
