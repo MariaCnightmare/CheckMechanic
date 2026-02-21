@@ -74,7 +74,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string GpuKpiText { get; set; } = "--";
     public string GpuSubText { get; set; } = "--";
     public string DiskText { get; set; } = "未取得";
-    public string DiskCapacityText { get; set; } = "容量: --";
+    public string DiskCapacityText { get; set; } = "Free -- / Total --";
     public string DiskUsageText { get; set; } = "--";
     public string NetText { get; set; } = "未取得";
     public string NetMetaText { get; set; } = "adapter: -";
@@ -364,7 +364,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 SetStatus($"❌ Telemetry HTTP {(int)response.StatusCode}");
                 CpuTemperatureText = "未取得";
                 CpuDetailText = "clock -- / power -- / source --";
-                DiskCapacityText = "容量: --";
+                DiskCapacityText = "Free -- / Total --";
                 DiskUsageText = "--";
                 SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
                 AddLog($"telemetry HTTP {(int)response.StatusCode}");
@@ -380,7 +380,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 SetStatus("❌ Telemetry parse failed");
                 CpuTemperatureText = "未取得";
                 CpuDetailText = "clock -- / power -- / source --";
-                DiskCapacityText = "容量: --";
+                DiskCapacityText = "Free -- / Total --";
                 DiskUsageText = "--";
                 SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
                 AddLog("telemetry parse failed");
@@ -498,7 +498,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             CpuTemperatureText = "未取得";
             CpuDetailText = "clock -- / power -- / source --";
-            DiskCapacityText = "容量: --";
+            DiskCapacityText = "Free -- / Total --";
             DiskUsageText = "--";
             TempLatestText = "--";
             TempRingCenterText = "R";
@@ -514,7 +514,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             CpuTemperatureText = "未取得";
             CpuDetailText = "clock -- / power -- / source --";
-            DiskCapacityText = "容量: --";
+            DiskCapacityText = "Free -- / Total --";
             DiskUsageText = "--";
             TempLatestText = "--";
             TempRingCenterText = "R";
@@ -1262,12 +1262,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (!totalGb.HasValue && !freeGb.HasValue)
         {
-            return "容量: --";
+            return "Free -- / Total --";
         }
 
         var free = freeGb.HasValue ? $"{freeGb.Value:F0}" : "?";
         var total = totalGb.HasValue ? $"{totalGb.Value:F0}" : "?";
-        return $"容量: Free {free} GB / Total {total} GB";
+        return $"Free {free} GB / Total {total} GB";
     }
 
     private static string BuildDiskUsageText(double? totalGb, double? freeGb)
