@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -122,7 +123,9 @@ public partial class WidgetWindow : Window
             AppendWithLimit(_diskHistory, diskTotal, 60);
             AppendWithLimit(_netHistory, netTotal, 60);
 
-            var score = PerfScoreCalculator.Calculate(payload.Cpu.TempC, _cpuHistory.ToList(), _memHistory.ToList(), _diskHistory.ToList(), _netHistory.ToList());
+            var cpuValues = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+            var memValues = _memHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+            var score = PerfScoreCalculator.Calculate(payload.Cpu.TempC, cpuValues, memValues, _diskHistory.ToList(), _netHistory.ToList());
             PerfScoreText = score.IsLocked ? "N/A (LOCKED)" : $"{score.Score} ({score.Grade})";
 
             if (payload.Cpu.TempC is null)

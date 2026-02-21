@@ -902,8 +902,8 @@ static (double? UsedMb, double? TotalMb) ReadGpuVramMetricsMb()
 
         var usedBytes = dedicatedUsedBytes + sharedUsedBytes;
         var totalBytes = dedicatedLimitBytes + sharedLimitBytes;
-        var usedMb = usedBytes > 0 ? usedBytes / 1024d / 1024d : null;
-        var totalMb = totalBytes > 0 ? totalBytes / 1024d / 1024d : null;
+        var usedMb = usedBytes > 0 ? usedBytes / 1024d / 1024d : (double?)null;
+        var totalMb = totalBytes > 0 ? totalBytes / 1024d / 1024d : (double?)null;
         return (usedMb, totalMb);
     }
     catch
