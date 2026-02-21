@@ -66,46 +66,33 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Resolved version: $version"
 
-      - name: Build installer zip
+      - name: Build installer artifacts (Setup.exe + zip)
         shell: pwsh
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           pwsh -NoProfile -ExecutionPolicy Bypass -File ".\scripts\build_installer_zip.ps1" -Configuration Release -Version $version
 
-      - name: Locate artifact zip
+      - name: Locate artifacts
         id: artifact
         shell: pwsh
         run: |
+          $setup = Get-ChildItem -Recurse -File -Filter "Setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $setup) { throw "Setup.exe not found (expected under artifacts/)." }
+
           $zip = Get-ChildItem -Recurse -File -Filter "CheckMechanic-Setup.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $zip) { throw "CheckMechanic-Setup.zip not found." }
-          "zip_path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
-          Write-Host "ZIP: $($zip.FullName)"
-
-      - name: Extract Setup.exe from zip
-        id: extract
-        shell: pwsh
-        run: |
-          $zipPath = "${{ steps.artifact.outputs.zip_path }}"
-          $version = "${{ steps.ver.outputs.version }}"
-
-          $outDir = Join-Path $env:RUNNER_TEMP ("checkmechanic_release_" + $version)
-          if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
-          New-Item -ItemType Directory -Path $outDir | Out-Null
-
-          Expand-Archive -Path $zipPath -DestinationPath $outDir -Force
-
-          $setup = Get-ChildItem -Path $outDir -Recurse -File -Filter "Setup.exe" | Select-Object -First 1
-          if (-not $setup) { throw "Setup.exe not found inside zip." }
+          if (-not $zip) { throw "CheckMechanic-Setup.zip not found (expected under artifacts/)." }
 
           "setup_path=$($setup.FullName)" >> $env:GITHUB_OUTPUT
-          "out_dir=$outDir" >> $env:GITHUB_OUTPUT
+          "zip_path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
+
           Write-Host "SETUP: $($setup.FullName)"
+          Write-Host "ZIP:   $($zip.FullName)"
 
       - name: Compute SHA256 of Setup.exe
         id: hash
         shell: pwsh
         run: |
-          $setupPath = "${{ steps.extract.outputs.setup_path }}"
+          $setupPath = "${{ steps.artifact.outputs.setup_path }}"
           $h = (Get-FileHash -Path $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
           "sha256=$h" >> $env:GITHUB_OUTPUT
           Write-Host "SHA256: $h"
@@ -113,15 +100,15 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: checkmechanic-release
 
       - name: Upload Setup.exe and zip to S3
         shell: pwsh
         run: |
           $version = "${{ steps.ver.outputs.version }}"
-          $setupPath = "${{ steps.extract.outputs.setup_path }}"
+          $setupPath = "${{ steps.artifact.outputs.setup_path }}"
           $zipPath = "${{ steps.artifact.outputs.zip_path }}"
           $bucket = "${{ env.S3_BUCKET }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
@@ -154,7 +141,6 @@ jobs:
 
           $publicBase = "${{ env.PUBLIC_BASE_URL }}"
           if (-not $publicBase -or $publicBase.Trim().Length -eq 0) {
-            # Region endpoint fallback (avoid redirect issues)
             $publicBase = "https://$bucket.s3.$region.amazonaws.com/$prefix"
           }
 
@@ -207,4 +193,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CheckMechanic-Setup
-          path: ${{ steps.artifact.outputs.zip_path }}
+          path: |
+            ${{ steps.artifact.outputs.setup_path }}
+            ${{ steps.artifact.outputs.zip_path }}
