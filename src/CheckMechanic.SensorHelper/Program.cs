@@ -156,6 +156,7 @@ while (listener.IsListening)
                     Gpu = ReadGpuTelemetry(currentMonitor),
                     Battery = telemetrySampler.ReadBatteryTelemetry(),
                 };
+                SanitizeTelemetryForTransport(body);
                 await WriteJsonAsync(ctx.Response, 200, body);
                 return;
             }
@@ -229,6 +230,50 @@ static async Task WriteJsonAsync(HttpListenerResponse response, int statusCode, 
     response.ContentLength64 = bytes.Length;
     await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
     response.OutputStream.Close();
+}
+
+static void SanitizeTelemetryForTransport(TelemetryResponse body)
+{
+    static double? Finite(double? value)
+    {
+        if (!value.HasValue)
+        {
+            return null;
+        }
+
+        return double.IsFinite(value.Value) ? value : null;
+    }
+
+    body.Cpu.TempC = Finite(body.Cpu.TempC);
+    body.Cpu.UtilPercent = Finite(body.Cpu.UtilPercent);
+    body.Cpu.ClockMhz = Finite(body.Cpu.ClockMhz);
+    body.Cpu.PowerW = Finite(body.Cpu.PowerW);
+    body.Cpu.TempPackageC = Finite(body.Cpu.TempPackageC);
+    body.Cpu.TempCoreMaxC = Finite(body.Cpu.TempCoreMaxC);
+
+    body.Memory.UtilPercent = Finite(body.Memory.UtilPercent);
+    body.Memory.TotalGb = Finite(body.Memory.TotalGb);
+    body.Memory.UsedGb = Finite(body.Memory.UsedGb);
+    body.Memory.AvailableGb = Finite(body.Memory.AvailableGb);
+
+    body.Disk.ReadBps = Finite(body.Disk.ReadBps);
+    body.Disk.WriteBps = Finite(body.Disk.WriteBps);
+    body.Disk.TotalGb = Finite(body.Disk.TotalGb);
+    body.Disk.FreeGb = Finite(body.Disk.FreeGb);
+
+    body.Net.RecvBps = Finite(body.Net.RecvBps);
+    body.Net.SentBps = Finite(body.Net.SentBps);
+    body.Net.LinkSpeedMbps = Finite(body.Net.LinkSpeedMbps);
+
+    body.Gpu.UtilPercent = Finite(body.Gpu.UtilPercent);
+    body.Gpu.VramUsedMb = Finite(body.Gpu.VramUsedMb);
+    body.Gpu.VramTotalMb = Finite(body.Gpu.VramTotalMb);
+    body.Gpu.TemperatureC = Finite(body.Gpu.TemperatureC);
+    body.Gpu.CoreClockMhz = Finite(body.Gpu.CoreClockMhz);
+    body.Gpu.MemoryClockMhz = Finite(body.Gpu.MemoryClockMhz);
+
+    body.Battery.Percent = Finite(body.Battery.Percent);
+    body.Battery.DischargeW = Finite(body.Battery.DischargeW);
 }
 
 static CpuTelemetry ReadCpuTelemetry(Computer? monitor, string? sensorInitError)
