@@ -15,35 +15,25 @@ on:
     tags:
       - "v*"
 
-<<<<<<< HEAD
-# OIDC を使う場合に必要（role-to-assume を使わない場合も害はない）
-=======
->>>>>>> 7cedc39 (add release_to_s3.yml)
 permissions:
-  id-token: write
   contents: read
+  id-token: write
 
 jobs:
   build-and-upload:
     runs-on: windows-latest
 
     env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      S3_BUCKET: ${{ secrets.S3_BUCKET }}
       RELEASE_PREFIX: checkmechanic
 
-<<<<<<< HEAD
-      # CloudFront を使うなら設定（if では secrets を参照できないので env に落とす）
-=======
-      # if で secrets.* を参照すると validator が落ちるケースがあるため env に落とす
->>>>>>> 7cedc39 (add release_to_s3.yml)
-      CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
-
-      # OIDC 用（設定されていればOIDCを使う）
+      # Required (GitHub Secrets)
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
 
-      # Public base URL（CloudFront / 独自ドメインなど。無ければ S3 URL にフォールバック）
+      # Optional (GitHub Vars/Secrets)
       PUBLIC_BASE_URL: ${{ vars.CHECKMECHANIC_PUBLIC_BASE_URL }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
 
     steps:
       - name: Checkout
@@ -86,12 +76,8 @@ jobs:
         id: artifact
         shell: pwsh
         run: |
-          $zip = Get-ChildItem -Recurse -File -Filter "CheckMechanic-Setup.zip" |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-
+          $zip = Get-ChildItem -Recurse -File -Filter "CheckMechanic-Setup.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $zip) { throw "CheckMechanic-Setup.zip not found." }
-
           "zip_path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
           Write-Host "ZIP: $($zip.FullName)"
 
@@ -133,28 +119,12 @@ jobs:
           }
           aws --version
 
-<<<<<<< HEAD
-      # --- AWS 認証：OIDC 優先（role-to-assume が設定されていればこちら） ---
-=======
->>>>>>> 7cedc39 (add release_to_s3.yml)
       - name: Configure AWS credentials (OIDC)
-        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
-
-<<<<<<< HEAD
-      # --- AWS 認証：フォールバック（Access Key / Secret） ---
-=======
->>>>>>> 7cedc39 (add release_to_s3.yml)
-      - name: Configure AWS credentials (Access Keys)
-        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: checkmechanic-release
 
       - name: Upload Setup.exe and zip to S3
         shell: pwsh
@@ -189,10 +159,12 @@ jobs:
           $bucket = "${{ env.S3_BUCKET }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
           $notes = "${{ github.event.inputs.notes_url }}"
+          $region = "${{ env.AWS_REGION }}"
 
           $publicBase = "${{ env.PUBLIC_BASE_URL }}"
           if (-not $publicBase -or $publicBase.Trim().Length -eq 0) {
-            $publicBase = "https://$bucket.s3.amazonaws.com/$prefix"
+            # Region endpoint fallback (avoid redirect issues)
+            $publicBase = "https://$bucket.s3.$region.amazonaws.com/$prefix"
           }
 
           if (-not $notes -or $notes.Trim().Length -eq 0) {
@@ -244,5 +216,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CheckMechanic-Setup
-          path: |
-            ${{ steps.artifact.outputs.zip_path }}
+          path: ${{ steps.artifact.outputs.zip_path }}
