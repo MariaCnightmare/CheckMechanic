@@ -810,7 +810,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         target.Clear();
         const double labelHeight = 16;
-        var maxTop = Math.Max(0, plotHeight - labelHeight);
+        const double axisPadding = 4;
+        var maxTop = Math.Max(axisPadding, plotHeight - labelHeight - axisPadding);
         for (var i = 0; i < ticks; i++)
         {
             var ratio = (double)i / (ticks - 1);
@@ -825,7 +826,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 label = decimals > 0 ? $"{value:F1}{unit}" : $"{value:F0}{unit}";
             }
-            var top = Math.Clamp(y - (labelHeight / 2.0), 0, maxTop);
+            var top = Math.Clamp(y - (labelHeight / 2.0), axisPadding, maxTop);
             target.Add(new ChartTick { Y = top, Label = label });
         }
     }
