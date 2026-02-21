@@ -72,6 +72,8 @@
                                 Style="{DynamicResource PrimaryButtonStyle}"
                                 Width="100"
                                 Height="34"
+                                Padding="10,4"
+                                FontSize="12"
                                 Margin="0,0,8,0"
                                 Click="RecheckButton_OnClick" />
 
@@ -80,12 +82,15 @@
                                 Style="{DynamicResource SecondaryButtonStyle}"
                                 Width="156"
                                 Height="34"
+                                Padding="10,4"
+                                FontSize="12"
                                 Margin="0,0,8,0"
                                 Click="LaunchOrActivateCoreTempButton_OnClick" />
 
                         <CheckBox Grid.Column="2"
                                   Content="終了時に Core Temp も終了"
                                   IsChecked="{Binding CloseCoreTempOnExitConsent, Mode=TwoWay}"
+                                  FontSize="12"
                                   VerticalAlignment="Center"
                                   Margin="0,0,8,0"
                                   ToolTip="アプリ終了時に Core Temp を自動終了します（手動起動分も対象）" />
@@ -96,6 +101,7 @@
                                 Style="{DynamicResource TertiaryButtonStyle}"
                                 Width="42"
                                 Height="34"
+                                FontSize="16"
                                 Click="MoreActionsButton_OnClick">
                             <Button.ContextMenu>
                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">

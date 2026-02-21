@@ -80,4 +80,5 @@ Local payload mode is disabled in the default repository flow. Burn no longer ch
 
 ## Widget mode note
 - Widget mode uses always-on-top by default.
+- Opacity and click-through can be adjusted from widget context menu.
 - Some games in exclusive fullscreen can hide topmost windows; borderless/windowed mode is recommended.

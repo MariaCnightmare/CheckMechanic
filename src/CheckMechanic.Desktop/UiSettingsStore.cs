@@ -11,6 +11,8 @@ public sealed class DesktopUiSettings
     public bool WidgetTopmost { get; set; } = true;
     public double? WidgetLeft { get; set; }
     public double? WidgetTop { get; set; }
+    public double WidgetOpacity { get; set; } = 0.85;
+    public bool WidgetClickThrough { get; set; }
 }
 
 internal static class UiSettingsStore

@@ -3,12 +3,15 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Windows.Interop;
 using CheckMechanic.Shared;
 
 namespace CheckMechanic.Desktop;
@@ -16,16 +19,22 @@ namespace CheckMechanic.Desktop;
 public partial class WidgetWindow : Window, INotifyPropertyChanged
 {
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
+    private const int GwlExStyle = -20;
+    private const int WsExTransparent = 0x20;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(1.5) };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1.5) };
     private readonly SemaphoreSlim _pollGate = new(1, 1);
+    private readonly Queue<double?> _tempHistory = new();
     private readonly Queue<double?> _cpuHistory = new();
     private readonly Queue<double?> _memHistory = new();
     private readonly Queue<double?> _diskHistory = new();
     private readonly Queue<double?> _netHistory = new();
     private bool _isSwitchingToFullUi;
+    private bool _isHovering;
+    private bool _clickThroughEnabled;
+    private double _widgetOpacitySetting = 0.85;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string CpuTemperatureText { get; set; } = "--";
@@ -35,6 +44,16 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
     public string StatusBadgeText { get; set; } = "STARTING";
     public Brush StatusBadgeBackground { get; set; } = new SolidColorBrush(Color.FromRgb(24, 40, 56));
     public Brush StatusBadgeBorder { get; set; } = new SolidColorBrush(Color.FromRgb(39, 70, 91));
+    public string TempSparkPath { get; set; } = string.Empty;
+    public string CpuSparkPath { get; set; } = string.Empty;
+    public double WidgetBackgroundOpacity { get; set; } = 0.85;
+    public double WidgetOpacitySetting
+    {
+        get => _widgetOpacitySetting;
+        set => _widgetOpacitySetting = Math.Clamp(value, 0.65, 0.95);
+    }
+
+    public string WidgetOpacityLabel => $"{Math.Round(WidgetOpacitySetting * 100):F0}%";
 
     public WidgetWindow()
     {
@@ -42,6 +61,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         DataContext = this;
 
         Loaded += WidgetWindow_OnLoaded;
+        SourceInitialized += WidgetWindow_OnSourceInitialized;
         Closing += WidgetWindow_OnClosing;
         LocationChanged += WidgetWindow_OnLocationChanged;
         _timer.Tick += WidgetTimer_OnTick;
@@ -60,6 +80,12 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         var settings = UiSettingsStore.Load();
         Topmost = settings.WidgetTopmost;
         TopmostMenuItem.IsChecked = Topmost;
+        WidgetOpacitySetting = settings.WidgetOpacity;
+        _clickThroughEnabled = settings.WidgetClickThrough;
+        ClickThroughMenuItem.IsChecked = _clickThroughEnabled;
+        OpacitySlider.Value = WidgetOpacitySetting;
+        UpdateBackgroundOpacity();
+        ApplyClickThrough();
 
         if (settings.WidgetLeft.HasValue && settings.WidgetTop.HasValue)
         {
@@ -103,6 +129,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
                 CpuMemText = "-- / --";
                 PerfScoreText = "N/A";
                 LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
+                TempSparkPath = string.Empty;
+                CpuSparkPath = string.Empty;
                 NotifyAll();
                 return;
             }
@@ -121,10 +149,12 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             double? netTotal = (payload.Net.RecvBps.HasValue || payload.Net.SentBps.HasValue)
                 ? payload.Net.RecvBps.GetValueOrDefault() + payload.Net.SentBps.GetValueOrDefault()
                 : null;
+            AppendWithLimit(_tempHistory, payload.Cpu.TempC, 30);
             AppendWithLimit(_cpuHistory, payload.Cpu.UtilPercent, 60);
             AppendWithLimit(_memHistory, payload.Memory.UtilPercent, 60);
             AppendWithLimit(_diskHistory, diskTotal, 60);
             AppendWithLimit(_netHistory, netTotal, 60);
+            UpdateSparklinePaths();
 
             var cpuValues = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
             var memValues = _memHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
@@ -150,6 +180,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             CpuMemText = "-- / --";
             PerfScoreText = "N/A";
             LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
+            TempSparkPath = string.Empty;
+            CpuSparkPath = string.Empty;
             NotifyAll();
         }
     }
@@ -322,6 +354,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
     private void WidgetWindow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         TopmostMenuItem.IsChecked = Topmost;
+        ClickThroughMenuItem.IsChecked = _clickThroughEnabled;
+        OpacitySlider.Value = WidgetOpacitySetting;
     }
 
     private void OpenFullUiMenuItem_OnClick(object sender, RoutedEventArgs e) => OpenFullUi();
@@ -333,6 +367,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         settings.WidgetTopmost = Topmost;
         settings.WidgetLeft = Left;
         settings.WidgetTop = Top;
+        settings.WidgetOpacity = WidgetOpacitySetting;
+        settings.WidgetClickThrough = _clickThroughEnabled;
         UiSettingsStore.Save(settings);
 
         var main = new MainWindow();
@@ -351,6 +387,26 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
 
         Topmost = item.IsChecked;
         SaveWidgetSettings();
+    }
+
+    private void ClickThroughMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem item)
+        {
+            return;
+        }
+
+        _clickThroughEnabled = item.IsChecked;
+        ApplyClickThrough();
+        SaveWidgetSettings();
+    }
+
+    private void OpacitySlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        WidgetOpacitySetting = e.NewValue;
+        UpdateBackgroundOpacity();
+        SaveWidgetSettings();
+        NotifyAll();
     }
 
     private void ResetPositionMenuItem_OnClick(object sender, RoutedEventArgs e)
@@ -379,6 +435,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             settings.WidgetTopmost = Topmost;
             settings.WidgetLeft = Left;
             settings.WidgetTop = Top;
+            settings.WidgetOpacity = WidgetOpacitySetting;
+            settings.WidgetClickThrough = _clickThroughEnabled;
             UiSettingsStore.Save(settings);
         }
     }
@@ -408,6 +466,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             settings.WidgetTopmost = Topmost;
             settings.WidgetLeft = Left;
             settings.WidgetTop = Top;
+            settings.WidgetOpacity = WidgetOpacitySetting;
+            settings.WidgetClickThrough = _clickThroughEnabled;
             UiSettingsStore.Save(settings);
         }
         catch
@@ -449,4 +509,107 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         TopmostMenuItem.IsChecked = Topmost;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
     }
+
+    private void WidgetWindow_OnSourceInitialized(object? sender, EventArgs e)
+    {
+        ApplyClickThrough();
+    }
+
+    private void WidgetWindow_MouseEnter(object sender, MouseEventArgs e)
+    {
+        _isHovering = true;
+        UpdateBackgroundOpacity();
+        NotifyAll();
+    }
+
+    private void WidgetWindow_MouseLeave(object sender, MouseEventArgs e)
+    {
+        _isHovering = false;
+        UpdateBackgroundOpacity();
+        NotifyAll();
+    }
+
+    private void UpdateBackgroundOpacity()
+    {
+        var boost = _isHovering ? 0.10 : 0.0;
+        WidgetBackgroundOpacity = Math.Min(0.95, WidgetOpacitySetting + boost);
+    }
+
+    private void ApplyClickThrough()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var exStyle = GetWindowLong(handle, GwlExStyle);
+        var nextStyle = _clickThroughEnabled
+            ? (exStyle | WsExTransparent)
+            : (exStyle & ~WsExTransparent);
+        if (nextStyle != exStyle)
+        {
+            SetWindowLong(handle, GwlExStyle, nextStyle);
+        }
+    }
+
+    private void UpdateSparklinePaths()
+    {
+        const double width = 152;
+        const double height = 20;
+
+        var tempValues = _tempHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        var tempMin = tempValues.Count > 0 ? tempValues.Min() : 30;
+        var tempMax = tempValues.Count > 0 ? tempValues.Max() : 100;
+        if (Math.Abs(tempMax - tempMin) < 6)
+        {
+            tempMax = tempMin + 6;
+        }
+
+        TempSparkPath = BuildSparklinePath(_tempHistory, width, height, tempMin, tempMax);
+        CpuSparkPath = BuildSparklinePath(_cpuHistory.TakeLast(30), width, height, 0, 100);
+    }
+
+    private static string BuildSparklinePath(IEnumerable<double?> values, double width, double height, double minY, double maxY)
+    {
+        var list = values.ToList();
+        if (list.Count < 2 || maxY <= minY)
+        {
+            return string.Empty;
+        }
+
+        var stepX = width / Math.Max(1, list.Count - 1);
+        var sb = new StringBuilder();
+        var hasPoint = false;
+
+        for (var i = 0; i < list.Count; i++)
+        {
+            var value = list[i];
+            if (!value.HasValue)
+            {
+                continue;
+            }
+
+            var normalized = Math.Clamp((value.Value - minY) / (maxY - minY), 0, 1);
+            var x = i * stepX;
+            var y = height - (normalized * height);
+            if (!hasPoint)
+            {
+                sb.Append($"M {x:F1},{y:F1} ");
+                hasPoint = true;
+            }
+            else
+            {
+                sb.Append($"L {x:F1},{y:F1} ");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 }
