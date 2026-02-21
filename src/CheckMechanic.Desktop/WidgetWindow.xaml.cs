@@ -19,6 +19,8 @@ namespace CheckMechanic.Desktop;
 public partial class WidgetWindow : Window, INotifyPropertyChanged
 {
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
+    private const int SparklinePoints = 30;
+    private const int HistoryWindowSeconds = 3600;
     private const int GwlExStyle = -20;
     private const int WsExTransparent = 0x20;
     private const int WmHotKey = 0x0312;
@@ -46,6 +48,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
     public string CpuTemperatureText { get; set; } = "--";
     public string CpuMemText { get; set; } = "-- / --";
     public string PerfScoreText { get; set; } = "--";
+    public string TempMinMaxHourText { get; set; } = "-- / --";
     public string LastUpdateText { get; set; } = "--";
     public string StatusBadgeText { get; set; } = "STARTING";
     public Brush StatusBadgeBackground { get; set; } = new SolidColorBrush(Color.FromRgb(24, 40, 56));
@@ -134,6 +137,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
                 CpuTemperatureText = "--";
                 CpuMemText = "-- / --";
                 PerfScoreText = "N/A";
+                TempMinMaxHourText = "-- / --";
                 LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
                 TempSparkPath = string.Empty;
                 CpuSparkPath = string.Empty;
@@ -155,17 +159,22 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             double? netTotal = (payload.Net.RecvBps.HasValue || payload.Net.SentBps.HasValue)
                 ? payload.Net.RecvBps.GetValueOrDefault() + payload.Net.SentBps.GetValueOrDefault()
                 : null;
-            AppendWithLimit(_tempHistory, payload.Cpu.TempC, 30);
+            AppendWithLimit(_tempHistory, payload.Cpu.TempC, GetHourWindowPointLimit());
             AppendWithLimit(_cpuHistory, payload.Cpu.UtilPercent, 60);
             AppendWithLimit(_memHistory, payload.Memory.UtilPercent, 60);
             AppendWithLimit(_diskHistory, diskTotal, 60);
             AppendWithLimit(_netHistory, netTotal, 60);
             UpdateSparklinePaths();
 
+            var tempValues = _tempHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+            TempMinMaxHourText = tempValues.Count > 0
+                ? $"{tempValues.Min():F1}°C / {tempValues.Max():F1}°C"
+                : "-- / --";
+
             var cpuValues = _cpuHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
             var memValues = _memHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
             var score = PerfScoreCalculator.Calculate(payload.Cpu.TempC, cpuValues, memValues, _diskHistory.ToList(), _netHistory.ToList());
-            PerfScoreText = score.IsLocked ? "N/A (LOCKED)" : $"{score.Score} ({score.Grade})";
+            PerfScoreText = score.IsLocked ? "LOCKED" : $"{score.Score} ({score.Grade})";
 
             if (payload.Cpu.TempC is null)
             {
@@ -185,6 +194,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             CpuTemperatureText = "--";
             CpuMemText = "-- / --";
             PerfScoreText = "N/A";
+            TempMinMaxHourText = "-- / --";
             LastUpdateText = DateTime.Now.ToString("HH:mm:ss");
             TempSparkPath = string.Empty;
             CpuSparkPath = string.Empty;
@@ -621,7 +631,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         const double width = 152;
         const double height = 20;
 
-        var tempValues = _tempHistory.Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        var tempWindow = _tempHistory.TakeLast(SparklinePoints).ToList();
+        var tempValues = tempWindow.Where(x => x.HasValue).Select(x => x!.Value).ToList();
         var tempMin = tempValues.Count > 0 ? tempValues.Min() : 30;
         var tempMax = tempValues.Count > 0 ? tempValues.Max() : 100;
         if (Math.Abs(tempMax - tempMin) < 6)
@@ -629,8 +640,14 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
             tempMax = tempMin + 6;
         }
 
-        TempSparkPath = BuildSparklinePath(_tempHistory, width, height, tempMin, tempMax);
-        CpuSparkPath = BuildSparklinePath(_cpuHistory.TakeLast(30), width, height, 0, 100);
+        TempSparkPath = BuildSparklinePath(tempWindow, width, height, tempMin, tempMax);
+        CpuSparkPath = BuildSparklinePath(_cpuHistory.TakeLast(SparklinePoints), width, height, 0, 100);
+    }
+
+    private int GetHourWindowPointLimit()
+    {
+        var seconds = Math.Max(1.0, _timer.Interval.TotalSeconds);
+        return (int)Math.Ceiling(HistoryWindowSeconds / seconds);
     }
 
     private static string BuildSparklinePath(IEnumerable<double?> values, double width, double height, double minY, double maxY)
