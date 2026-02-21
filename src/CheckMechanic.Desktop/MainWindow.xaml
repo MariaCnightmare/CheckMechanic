@@ -393,7 +393,7 @@
                                     <ColumnDefinition Width="288" />
                                 </Grid.ColumnDefinitions>
 
-                                <Canvas Width="72" Height="180">
+                                <Canvas Width="72" Height="180" ClipToBounds="True">
                                     <ItemsControl ItemsSource="{Binding CpuChartTicks}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -464,7 +464,7 @@
                                     <ColumnDefinition Width="288" />
                                 </Grid.ColumnDefinitions>
 
-                                <Canvas Width="72" Height="180">
+                                <Canvas Width="72" Height="180" ClipToBounds="True">
                                     <ItemsControl ItemsSource="{Binding GpuChartTicks}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -535,7 +535,7 @@
                                     <ColumnDefinition Width="288" />
                                 </Grid.ColumnDefinitions>
 
-                                <Canvas Width="72" Height="180">
+                                <Canvas Width="72" Height="180" ClipToBounds="True">
                                     <ItemsControl ItemsSource="{Binding MemChartTicks}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -606,7 +606,7 @@
                                     <ColumnDefinition Width="288" />
                                 </Grid.ColumnDefinitions>
 
-                                <Canvas Width="72" Height="180">
+                                <Canvas Width="72" Height="180" ClipToBounds="True">
                                     <ItemsControl ItemsSource="{Binding DiskChartTicks}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -677,7 +677,7 @@
                                     <ColumnDefinition Width="288" />
                                 </Grid.ColumnDefinitions>
 
-                                <Canvas Width="72" Height="180">
+                                <Canvas Width="72" Height="180" ClipToBounds="True">
                                     <ItemsControl ItemsSource="{Binding NetChartTicks}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
