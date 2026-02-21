@@ -303,6 +303,7 @@ static GpuTelemetry ReadGpuTelemetry(Computer? monitor)
     var name = ReadGpuName();
     var util = ReadGpuUtilPercentFromLhm(monitor) ?? ReadGpuUtilPercentFromPerformanceCounter();
     var (coreClock, memClock) = ReadGpuClocksFromLhm(monitor);
+    var (vramUsedMb, vramTotalMb) = ReadGpuVramMetricsMb();
 
     return new GpuTelemetry
     {
@@ -310,8 +311,8 @@ static GpuTelemetry ReadGpuTelemetry(Computer? monitor)
         Vendor = InferGpuVendor(name),
         DriverVersion = ReadGpuDriverVersion(),
         UtilPercent = util,
-        VramUsedMb = ReadGpuVramUsedMb(),
-        VramTotalMb = ReadGpuVramTotalMb(),
+        VramUsedMb = vramUsedMb,
+        VramTotalMb = vramTotalMb ?? ReadGpuVramTotalMb(),
         TemperatureC = ReadGpuTemperatureFromLhm(monitor),
         CoreClockMhz = coreClock,
         MemoryClockMhz = memClock,
@@ -877,28 +878,37 @@ static double? ReadGpuUtilPercentFromPerformanceCounter()
     }
 }
 
-static double? ReadGpuVramUsedMb()
+static (double? UsedMb, double? TotalMb) ReadGpuVramMetricsMb()
 {
     try
     {
         var category = new PerformanceCounterCategory("GPU Adapter Memory");
         var instances = category.GetInstanceNames();
-        double dedicated = 0;
-        double shared = 0;
+        double dedicatedUsedBytes = 0;
+        double sharedUsedBytes = 0;
+        double dedicatedLimitBytes = 0;
+        double sharedLimitBytes = 0;
         foreach (var name in instances)
         {
             using var dedicatedCounter = new PerformanceCounter("GPU Adapter Memory", "Dedicated Usage", name, true);
             using var sharedCounter = new PerformanceCounter("GPU Adapter Memory", "Shared Usage", name, true);
-            dedicated += dedicatedCounter.NextValue();
-            shared += sharedCounter.NextValue();
+            using var dedicatedLimitCounter = new PerformanceCounter("GPU Adapter Memory", "Dedicated Limit", name, true);
+            using var sharedLimitCounter = new PerformanceCounter("GPU Adapter Memory", "Shared Limit", name, true);
+            dedicatedUsedBytes += dedicatedCounter.NextValue();
+            sharedUsedBytes += sharedCounter.NextValue();
+            dedicatedLimitBytes += dedicatedLimitCounter.NextValue();
+            sharedLimitBytes += sharedLimitCounter.NextValue();
         }
 
-        var bytes = dedicated + shared;
-        return bytes > 0 ? bytes / 1024d / 1024d : null;
+        var usedBytes = dedicatedUsedBytes + sharedUsedBytes;
+        var totalBytes = dedicatedLimitBytes + sharedLimitBytes;
+        var usedMb = usedBytes > 0 ? usedBytes / 1024d / 1024d : null;
+        var totalMb = totalBytes > 0 ? totalBytes / 1024d / 1024d : null;
+        return (usedMb, totalMb);
     }
     catch
     {
-        return null;
+        return (null, null);
     }
 }
 

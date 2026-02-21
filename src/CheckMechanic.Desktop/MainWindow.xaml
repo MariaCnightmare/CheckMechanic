@@ -158,6 +158,7 @@
                                      Foreground="{DynamicResource AccentBrush}"
                                      Background="{DynamicResource Surface2Brush}" />
                         <TextBlock Text="{Binding CpuAvgText}" Style="{DynamicResource MetricSubStyle}" Margin="0,6,0,0" />
+                        <TextBlock Text="{Binding CpuDetailText}" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 

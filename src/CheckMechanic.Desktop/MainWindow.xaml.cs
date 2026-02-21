@@ -65,6 +65,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string CpuKpiText { get; set; } = "--";
     public string CpuUtilizationText { get; set; } = "CPU使用率: 未取得";
     public string CpuAvgText { get; set; } = "avg(60s): --";
+    public string CpuDetailText { get; set; } = "clock -- / power -- / source --";
     public string MemoryText { get; set; } = "未取得";
     public string MemoryKpiText { get; set; } = "--";
     public string MemorySubText { get; set; } = "--";
@@ -361,6 +362,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SetStatus($"❌ Telemetry HTTP {(int)response.StatusCode}");
                 CpuTemperatureText = "未取得";
+                CpuDetailText = "clock -- / power -- / source --";
                 DiskCapacityText = "容量: --";
                 DiskUsageText = "--";
                 SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
@@ -376,6 +378,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SetStatus("❌ Telemetry parse failed");
                 CpuTemperatureText = "未取得";
+                CpuDetailText = "clock -- / power -- / source --";
                 DiskCapacityText = "容量: --";
                 DiskUsageText = "--";
                 SetRestrictedMode(true, "必須要件未達: 温度取得が必要です。", "Core Temp を起動した状態で再チェックしてください。");
@@ -387,6 +390,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CpuUtilizationText = payload.Cpu.UtilPercent is double utilVal ? $"CPU使用率: {utilVal:F1}%" : "CPU使用率: 未取得";
             CpuUtilizationValue = payload.Cpu.UtilPercent is double cpuVal ? Math.Clamp(cpuVal, 0, 100) : 0;
             CpuKpiText = payload.Cpu.UtilPercent is double cpuNow ? $"{cpuNow:F1}%" : "--";
+            CpuDetailText = BuildCpuDetailText(payload.Cpu);
 
             MemoryText = BuildMemoryText(payload.Memory);
             MemoryUtilizationValue = payload.Memory.UtilPercent is double memVal ? Math.Clamp(memVal, 0, 100) : 0;
@@ -492,6 +496,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch (HttpRequestException ex)
         {
             CpuTemperatureText = "未取得";
+            CpuDetailText = "clock -- / power -- / source --";
             DiskCapacityText = "容量: --";
             DiskUsageText = "--";
             TempLatestText = "--";
@@ -507,6 +512,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch
         {
             CpuTemperatureText = "未取得";
+            CpuDetailText = "clock -- / power -- / source --";
             DiskCapacityText = "容量: --";
             DiskUsageText = "--";
             TempLatestText = "--";
@@ -966,7 +972,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             var used = gpu.VramUsedMb.HasValue ? $"{gpu.VramUsedMb.Value / 1024d:F1}GB" : "?";
             var total = gpu.VramTotalMb.HasValue ? $"{gpu.VramTotalMb.Value / 1024d:F1}GB" : "?";
-            parts.Add($"VRAM {used}/{total}");
+            if (gpu.VramUsedMb.HasValue && gpu.VramTotalMb.HasValue && gpu.VramUsedMb.Value > gpu.VramTotalMb.Value)
+            {
+                parts.Add($"VRAM {used} (total est {total})");
+            }
+            else
+            {
+                parts.Add($"VRAM {used}/{total}");
+            }
         }
         if (gpu.TemperatureC.HasValue)
         {
@@ -985,6 +998,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             parts.Add($"mem {gpu.MemoryClockMhz.Value:F}MHz");
         }
         return parts.Count == 0 ? "N/A" : string.Join(" / ", parts);
+    }
+
+    private static string BuildCpuDetailText(CpuTelemetry cpu)
+    {
+        var clock = cpu.ClockMhz.HasValue ? $"{cpu.ClockMhz.Value:F0}MHz" : "n/a";
+        var power = cpu.PowerW.HasValue ? $"{cpu.PowerW.Value:F1}W" : "n/a";
+        var source = cpu.ProviderUsed ?? cpu.Source ?? "unknown";
+        var label = string.IsNullOrWhiteSpace(cpu.Label) ? "-" : cpu.Label;
+        return $"clock {clock} / power {power} / source {source} / label {label}";
     }
 
     private static string BuildBatteryText(object? battery)
@@ -1688,6 +1710,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         hc.Add(CpuUtilizationText);
         hc.Add(CpuKpiText);
         hc.Add(CpuAvgText);
+        hc.Add(CpuDetailText);
 
         hc.Add(MemoryText);
         hc.Add(MemoryKpiText);
