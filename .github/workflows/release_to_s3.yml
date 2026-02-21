@@ -31,9 +31,9 @@ jobs:
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
 
-      # Optional (GitHub Vars/Secrets)
+      # Optional (GitHub Vars)
       PUBLIC_BASE_URL: ${{ vars.CHECKMECHANIC_PUBLIC_BASE_URL }}
-      CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
 
     steps:
       - name: Checkout
@@ -110,15 +110,6 @@ jobs:
           "sha256=$h" >> $env:GITHUB_OUTPUT
           Write-Host "SHA256: $h"
 
-      - name: Install AWS CLI (if needed)
-        shell: pwsh
-        run: |
-          if (-not (Get-Command aws -ErrorAction SilentlyContinue)) {
-            Write-Host "AWS CLI not found, installing..."
-            choco install awscli -y
-          }
-          aws --version
-
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -163,7 +154,6 @@ jobs:
 
           $publicBase = "${{ env.PUBLIC_BASE_URL }}"
           if (-not $publicBase -or $publicBase.Trim().Length -eq 0) {
-            # Region endpoint fallback (avoid redirect issues)
             $publicBase = "https://$bucket.s3.$region.amazonaws.com/$prefix"
           }
 
