@@ -2,20 +2,21 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="CheckMechanic Widget"
-        Width="352"
-        Height="204"
-        MinWidth="336"
-        MinHeight="188"
-        MaxWidth="420"
-        MaxHeight="260"
+        Width="360"
+        Height="168"
+        MinWidth="340"
+        MinHeight="168"
+        MaxWidth="400"
+        MaxHeight="220"
         Background="{DynamicResource BackgroundBrush}"
         WindowStyle="None"
         ResizeMode="NoResize"
-        ShowInTaskbar="True"
+        Topmost="True"
+        ShowInTaskbar="False"
         ContextMenuOpening="WidgetWindow_ContextMenuOpening"
         MouseLeftButtonDown="WidgetRoot_MouseLeftButtonDown">
     <Window.ContextMenu>
-        <ContextMenu x:Name="WidgetContextMenu" Foreground="Black">
+        <ContextMenu x:Name="WidgetContextMenu">
             <MenuItem Header="フルUIを開く" Click="OpenFullUiMenuItem_OnClick" />
             <MenuItem x:Name="TopmostMenuItem"
                       Header="最前面"
@@ -26,8 +27,8 @@
             <MenuItem Header="閉じる" Click="CloseMenuItem_OnClick" />
         </ContextMenu>
     </Window.ContextMenu>
-    <Border Margin="10"
-            Padding="12"
+    <Border Margin="8"
+            Padding="10"
             CornerRadius="14"
             Background="{DynamicResource CardBackgroundBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
@@ -64,11 +65,11 @@
                         Click="MenuButton_OnClick" />
             </Grid>
 
-            <Grid Grid.Row="1" Margin="0,10,0,8">
+            <Grid Grid.Row="1" Margin="0,8,0,6">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="*" MinWidth="150" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" MinWidth="165" />
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -79,7 +80,7 @@
                 <TextBlock Text="Temp" Style="{DynamicResource MetricSubStyle}" Foreground="{DynamicResource TextBrush}" />
                 <TextBlock Grid.Column="2"
                            Text="{Binding CpuTemperatureText}"
-                           FontSize="24"
+                           FontSize="22"
                            FontWeight="SemiBold"
                            TextAlignment="Right"
                            TextTrimming="CharacterEllipsis"
@@ -109,7 +110,9 @@
             <TextBlock Grid.Row="2"
                        Text="{Binding LastUpdateText, StringFormat=Updated {0}}"
                        Style="{DynamicResource MetricSubStyle}"
-                       HorizontalAlignment="Right"
+                       HorizontalAlignment="Stretch"
+                       TextAlignment="Right"
+                       FontSize="12"
                        TextTrimming="CharacterEllipsis"
                        Foreground="{DynamicResource TextBrush}" />
         </Grid>

@@ -59,6 +59,8 @@ streamlit run app.py
   - 「終了時に Core Temp も終了」はデフォルトONでヘッダー表示、設定はローカル保存
   - Opt-in ON 時のみランキング用カテゴリJSONをローカル生成（送信は未実装）
   - 温度値が取得できない環境では「必須要件未達」を表示し、制限モードへ移行
+  - Widget Mode は左下配置を既定とし、Topmost 常時表示をデフォルト化（設定でOFF可）
+  - Core Temp 由来の既知広告ショートカット（`Goodgame*.url` など）は署名付き・直近更新ファイルのみを対象に起動時クリーンアップ
 
 ### ランキング用カテゴリ生成（ローカル）
 - Opt-in が ON のときのみ `RankingProfileDto` を生成
@@ -103,6 +105,7 @@ pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -Pu
 - 既定では Core Temp の自動導入は行わない（手動インストール必須）
 - Setup は Core Temp の導入有無のみ検出し、未導入なら公式URL案内して終了
 - 自動導入を行わない理由: 追加広告ショートカット（例: `Goodgame Empire.url`）の回避
+- 念のため Desktop 起動時に既知パターンの不要 `.url` を後始末（誤削除防止のため署名+更新時刻で判定）
 - Core Temp の再配布条件はライセンス要確認（既定は同梱しない）
 
 ### API quick check

@@ -70,6 +70,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         {
             ResetToDefaultPosition();
         }
+
+        ClampToWorkArea();
     }
 
     private async void WidgetTimer_OnTick(object? sender, EventArgs e)
@@ -364,6 +366,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
 
     private void WidgetWindow_OnLocationChanged(object? sender, EventArgs e)
     {
+        ClampToWorkArea();
         SaveWidgetSettings();
     }
 
@@ -385,6 +388,15 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         var area = SystemParameters.WorkArea;
         Left = area.Left + 16;
         Top = area.Bottom - Height - 16;
+    }
+
+    private void ClampToWorkArea()
+    {
+        var area = SystemParameters.WorkArea;
+        var right = area.Right - Width;
+        var bottom = area.Bottom - Height;
+        Left = Math.Max(area.Left, Math.Min(Left, right));
+        Top = Math.Max(area.Top, Math.Min(Top, bottom));
     }
 
     private void SaveWidgetSettings()

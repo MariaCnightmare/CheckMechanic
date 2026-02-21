@@ -42,6 +42,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private int _latestPerfScore;
     private string _latestPerfGrade = "N/A";
     private bool _isSwitchingToWidgetMode;
+    private bool _coreTempArtifactsCleanupDone;
 
     // --- Commit C: redraw suppression ---
     private int? _lastUiHash;
@@ -273,6 +274,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         LoadUiSettings();
         LoadLocalScoreHistory();
+        CleanupCoreTempInstallerArtifacts();
         await EnsureHelperAvailableAsync();
 
         await PollAllAsync(forceProfile: true);
@@ -1816,6 +1818,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 });
                 if (p is not null)
                 {
+                    CleanupCoreTempInstallerArtifacts();
                     return p;
                 }
             }
@@ -1826,16 +1829,185 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            return Process.Start(new ProcessStartInfo
+            var process = Process.Start(new ProcessStartInfo
             {
                 FileName = "Core Temp.exe",
                 UseShellExecute = true,
             });
+            if (process is not null)
+            {
+                CleanupCoreTempInstallerArtifacts();
+            }
+            return process;
         }
         catch
         {
             return null;
         }
+    }
+
+    private void CleanupCoreTempInstallerArtifacts()
+    {
+        if (_coreTempArtifactsCleanupDone)
+        {
+            return;
+        }
+
+        try
+        {
+            var removedLinks = 0;
+            foreach (var desktopDir in EnumerateDesktopCandidates())
+            {
+                if (!Directory.Exists(desktopDir))
+                {
+                    continue;
+                }
+
+                foreach (var shortcutPath in Directory.EnumerateFiles(desktopDir, "*.url", SearchOption.TopDirectoryOnly))
+                {
+                    if (!ShouldDeleteSuspiciousShortcut(shortcutPath))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        File.Delete(shortcutPath);
+                        removedLinks++;
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
+            var removedDirs = RemoveCoreTempAdDirectoryIfExists();
+            if (removedLinks > 0 || removedDirs > 0)
+            {
+                AddLog($"core temp artifact cleanup: urls={removedLinks}, dirs={removedDirs}");
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _coreTempArtifactsCleanupDone = true;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateDesktopCandidates()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        if (!string.IsNullOrWhiteSpace(desktop))
+        {
+            seen.Add(Path.GetFullPath(desktop));
+            yield return desktop;
+        }
+
+        foreach (var envName in new[] { "OneDrive", "OneDriveCommercial", "OneDriveConsumer" })
+        {
+            var oneDriveRoot = Environment.GetEnvironmentVariable(envName);
+            if (string.IsNullOrWhiteSpace(oneDriveRoot))
+            {
+                continue;
+            }
+
+            var candidate = Path.Combine(oneDriveRoot, "Desktop");
+            try
+            {
+                var fullPath = Path.GetFullPath(candidate);
+                if (seen.Add(fullPath))
+                {
+                    yield return fullPath;
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static bool ShouldDeleteSuspiciousShortcut(string shortcutPath)
+    {
+        var name = Path.GetFileName(shortcutPath);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        try
+        {
+            var info = new FileInfo(shortcutPath);
+            var recentThreshold = DateTime.UtcNow.AddHours(-36);
+            var recent = info.CreationTimeUtc >= recentThreshold || info.LastWriteTimeUtc >= recentThreshold;
+            if (!recent)
+            {
+                return false;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        string content;
+        try
+        {
+            content = File.ReadAllText(shortcutPath);
+        }
+        catch
+        {
+            return false;
+        }
+
+        var hasAdSignature =
+            content.Contains("goodgamestudios.com", StringComparison.OrdinalIgnoreCase) ||
+            content.Contains(@"\Core Temp\goodgamestudios\", StringComparison.OrdinalIgnoreCase);
+
+        if (!hasAdSignature)
+        {
+            return false;
+        }
+
+        return name.Contains("goodgame", StringComparison.OrdinalIgnoreCase) ||
+               content.Contains("Goodgame Empire", StringComparison.OrdinalIgnoreCase) ||
+               content.Contains("goodgamestudios", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int RemoveCoreTempAdDirectoryIfExists()
+    {
+        var removed = 0;
+        foreach (var baseDir in new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+        })
+        {
+            if (string.IsNullOrWhiteSpace(baseDir))
+            {
+                continue;
+            }
+
+            var target = Path.Combine(baseDir, "Core Temp", "goodgamestudios");
+            if (!Directory.Exists(target))
+            {
+                continue;
+            }
+
+            try
+            {
+                Directory.Delete(target, recursive: true);
+                removed++;
+            }
+            catch
+            {
+            }
+        }
+
+        return removed;
     }
 
     private static IEnumerable<string> CoreTempExeCandidates()

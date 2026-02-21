@@ -58,6 +58,10 @@ If key does not exist, bundle blocks installation and shows manual-install guida
   - A Help button that opens the official URL:
     - `https://www.alcpu.com/CoreTemp/Core-Temp-setup.exe`
 - This policy avoids third-party installer side effects (for example unwanted desktop shortcuts such as `Goodgame Empire.url`).
+- Desktop app also performs a best-effort cleanup for known Core Temp ad artifacts:
+  - recent desktop `.url` files with known signature (`goodgamestudios.com`, `Core Temp\\goodgamestudios`)
+  - `C:\\Program Files\\Core Temp\\goodgamestudios\\` (or x86 equivalent) when accessible
+- Cleanup is signature-gated and recent-file-gated to avoid deleting unrelated existing shortcuts.
 
 ### Optional local payload mode
 Local payload mode is disabled in the default repository flow. Burn no longer chains `CoreTempSetup.exe`.
@@ -73,3 +77,7 @@ Local payload mode is disabled in the default repository flow. Burn no longer ch
 3. Follow wizard
 4. If Core Temp is missing, setup stops and asks user to install Core Temp manually from official URL
 5. Launch CheckMechanic from finish screen or Start Menu
+
+## Widget mode note
+- Widget mode uses always-on-top by default.
+- Some games in exclusive fullscreen can hide topmost windows; borderless/windowed mode is recommended.
