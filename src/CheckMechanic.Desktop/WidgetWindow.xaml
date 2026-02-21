@@ -15,7 +15,7 @@
         ContextMenuOpening="WidgetWindow_ContextMenuOpening"
         MouseLeftButtonDown="WidgetRoot_MouseLeftButtonDown">
     <Window.ContextMenu>
-        <ContextMenu x:Name="WidgetContextMenu">
+        <ContextMenu x:Name="WidgetContextMenu" Foreground="Black">
             <MenuItem Header="フルUIを開く" Click="OpenFullUiMenuItem_OnClick" />
             <MenuItem x:Name="TopmostMenuItem"
                       Header="最前面"
@@ -51,9 +51,9 @@
                             BorderBrush="{Binding StatusBadgeBorder}"
                             Padding="8,3"
                             Margin="0,0,8,0">
-                        <TextBlock Text="{Binding StatusBadgeText}" FontWeight="SemiBold" FontSize="11" />
+                        <TextBlock Text="{Binding StatusBadgeText}" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextBrush}" />
                     </Border>
-                    <TextBlock Text="Widget Mode" Style="{DynamicResource MetricSubStyle}" VerticalAlignment="Center" />
+                    <TextBlock Text="Widget Mode" Style="{DynamicResource MetricSubStyle}" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" />
                 </StackPanel>
 
                 <Button Grid.Column="1"
@@ -75,20 +75,21 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="Temp" Style="{DynamicResource MetricSubStyle}" />
-                <TextBlock Grid.Column="1" Text="{Binding CpuTemperatureText}" Style="{DynamicResource MetricValueStyle}" TextAlignment="Right" />
+                <TextBlock Text="Temp" Style="{DynamicResource MetricSubStyle}" Foreground="{DynamicResource TextBrush}" />
+                <TextBlock Grid.Column="1" Text="{Binding CpuTemperatureText}" Style="{DynamicResource MetricValueStyle}" TextAlignment="Right" Foreground="{DynamicResource AccentBrush}" />
 
-                <TextBlock Grid.Row="1" Text="CPU / Mem" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" />
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CpuMemText}" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" TextAlignment="Right" />
+                <TextBlock Grid.Row="1" Text="CPU / Mem" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" Foreground="{DynamicResource TextBrush}" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CpuMemText}" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" TextAlignment="Right" Foreground="{DynamicResource TextBrush}" />
 
-                <TextBlock Grid.Row="2" Text="PerfScore" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" />
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PerfScoreText}" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" TextAlignment="Right" />
+                <TextBlock Grid.Row="2" Text="PerfScore" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" Foreground="{DynamicResource TextBrush}" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PerfScoreText}" Style="{DynamicResource MetricSubStyle}" Margin="0,8,0,0" TextAlignment="Right" Foreground="{DynamicResource TextBrush}" />
             </Grid>
 
             <TextBlock Grid.Row="2"
                        Text="{Binding LastUpdateText, StringFormat=Updated {0}}"
                        Style="{DynamicResource AxisLabelStyle}"
-                       HorizontalAlignment="Right" />
+                       HorizontalAlignment="Right"
+                       Foreground="{DynamicResource TextBrush}" />
         </Grid>
     </Border>
 </Window>

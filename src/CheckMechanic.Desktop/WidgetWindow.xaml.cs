@@ -13,7 +13,7 @@ using CheckMechanic.Shared;
 
 namespace CheckMechanic.Desktop;
 
-public partial class WidgetWindow : Window
+public partial class WidgetWindow : Window, INotifyPropertyChanged
 {
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
@@ -26,6 +26,7 @@ public partial class WidgetWindow : Window
     private readonly Queue<double?> _diskHistory = new();
     private readonly Queue<double?> _netHistory = new();
     private bool _isSwitchingToFullUi;
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     public string CpuTemperatureText { get; set; } = "--";
     public string CpuMemText { get; set; } = "-- / --";
@@ -427,11 +428,13 @@ public partial class WidgetWindow : Window
 
     private void NotifyAll()
     {
-        Dispatcher.Invoke(() =>
+        if (!Dispatcher.CheckAccess())
         {
-            DataContext = null;
-            DataContext = this;
-            TopmostMenuItem.IsChecked = Topmost;
-        });
+            Dispatcher.Invoke(NotifyAll);
+            return;
+        }
+
+        TopmostMenuItem.IsChecked = Topmost;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
     }
 }

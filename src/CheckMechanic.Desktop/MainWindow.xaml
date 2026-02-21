@@ -81,7 +81,7 @@
                                 Width="42"
                                 Click="MoreActionsButton_OnClick">
                             <Button.ContextMenu>
-                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}" Foreground="Black">
                                     <MenuItem Header="管理者で再試行" Click="RestartHelperAsAdminButton_OnClick" />
                                     <MenuItem Header="SensorHelper再起動" Click="RestartHelperButton_OnClick" />
                                     <MenuItem Header="再接続" Click="ReconnectButton_OnClick" />
