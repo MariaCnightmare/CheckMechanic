@@ -15,7 +15,10 @@ on:
     tags:
       - "v*"
 
+<<<<<<< HEAD
 # OIDC を使う場合に必要（role-to-assume を使わない場合も害はない）
+=======
+>>>>>>> 7cedc39 (add release_to_s3.yml)
 permissions:
   id-token: write
   contents: read
@@ -29,7 +32,11 @@ jobs:
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       RELEASE_PREFIX: checkmechanic
 
+<<<<<<< HEAD
       # CloudFront を使うなら設定（if では secrets を参照できないので env に落とす）
+=======
+      # if で secrets.* を参照すると validator が落ちるケースがあるため env に落とす
+>>>>>>> 7cedc39 (add release_to_s3.yml)
       CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
 
       # OIDC 用（設定されていればOIDCを使う）
@@ -126,7 +133,10 @@ jobs:
           }
           aws --version
 
+<<<<<<< HEAD
       # --- AWS 認証：OIDC 優先（role-to-assume が設定されていればこちら） ---
+=======
+>>>>>>> 7cedc39 (add release_to_s3.yml)
       - name: Configure AWS credentials (OIDC)
         if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@v4
@@ -134,7 +144,10 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
+<<<<<<< HEAD
       # --- AWS 認証：フォールバック（Access Key / Secret） ---
+=======
+>>>>>>> 7cedc39 (add release_to_s3.yml)
       - name: Configure AWS credentials (Access Keys)
         if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
         uses: aws-actions/configure-aws-credentials@v4
