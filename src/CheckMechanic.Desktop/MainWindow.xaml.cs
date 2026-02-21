@@ -1899,12 +1899,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static IEnumerable<string> EnumerateDesktopCandidates()
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
 
         var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         if (!string.IsNullOrWhiteSpace(desktop))
         {
-            seen.Add(Path.GetFullPath(desktop));
-            yield return desktop;
+            var fullDesktop = TryGetFullPath(desktop);
+            if (fullDesktop is not null && seen.Add(fullDesktop))
+            {
+                result.Add(fullDesktop);
+            }
         }
 
         foreach (var envName in new[] { "OneDrive", "OneDriveCommercial", "OneDriveConsumer" })
@@ -1916,16 +1920,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             var candidate = Path.Combine(oneDriveRoot, "Desktop");
+            var fullPath = TryGetFullPath(candidate);
+            if (fullPath is not null && seen.Add(fullPath))
+            {
+                result.Add(fullPath);
+            }
+        }
+
+        return result;
+
+        static string? TryGetFullPath(string path)
+        {
             try
             {
-                var fullPath = Path.GetFullPath(candidate);
-                if (seen.Add(fullPath))
-                {
-                    yield return fullPath;
-                }
+                return Path.GetFullPath(path);
             }
             catch
             {
+                return null;
             }
         }
     }
