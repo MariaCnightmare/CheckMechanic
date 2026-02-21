@@ -15,6 +15,11 @@ on:
     tags:
       - "v*"
 
+# OIDC を使う場合に必要（role-to-assume を使わない場合も害はない）
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   build-and-upload:
     runs-on: windows-latest
@@ -23,9 +28,14 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       RELEASE_PREFIX: checkmechanic
-      # If you use CloudFront, you can set a public base URL in repo variables and use it.
-      # Or just hardcode it in your app's UpdateManifestUrl.
-      # Example: https://dxxxxxxxx.cloudfront.net/checkmechanic
+
+      # CloudFront を使うなら設定（if では secrets を参照できないので env に落とす）
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
+      # OIDC 用（設定されていればOIDCを使う）
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      # Public base URL（CloudFront / 独自ドメインなど。無ければ S3 URL にフォールバック）
       PUBLIC_BASE_URL: ${{ vars.CHECKMECHANIC_PUBLIC_BASE_URL }}
 
     steps:
@@ -69,9 +79,12 @@ jobs:
         id: artifact
         shell: pwsh
         run: |
-          # Adjust this path if your script outputs elsewhere
-          $zip = Get-ChildItem -Recurse -File -Filter "CheckMechanic-Setup.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $zip = Get-ChildItem -Recurse -File -Filter "CheckMechanic-Setup.zip" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
           if (-not $zip) { throw "CheckMechanic-Setup.zip not found." }
+
           "zip_path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
           Write-Host "ZIP: $($zip.FullName)"
 
@@ -113,12 +126,22 @@ jobs:
           }
           aws --version
 
-      - name: Configure AWS credentials
+      # --- AWS 認証：OIDC 優先（role-to-assume が設定されていればこちら） ---
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # --- AWS 認証：フォールバック（Access Key / Secret） ---
+      - name: Configure AWS credentials (Access Keys)
+        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Upload Setup.exe and zip to S3
         shell: pwsh
@@ -126,18 +149,16 @@ jobs:
           $version = "${{ steps.ver.outputs.version }}"
           $setupPath = "${{ steps.extract.outputs.setup_path }}"
           $zipPath = "${{ steps.artifact.outputs.zip_path }}"
-          $bucket = "${{ secrets.S3_BUCKET }}"
+          $bucket = "${{ env.S3_BUCKET }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
 
           $s3SetupKey = "$prefix/releases/$version/Setup.exe"
           $s3ZipKey   = "$prefix/releases/$version/CheckMechanic-Setup.zip"
 
-          # Setup.exe: long cache
           aws s3 cp "$setupPath" "s3://$bucket/$s3SetupKey" `
             --content-type "application/octet-stream" `
             --cache-control "public, max-age=31536000, immutable"
 
-          # zip: long cache
           aws s3 cp "$zipPath" "s3://$bucket/$s3ZipKey" `
             --content-type "application/zip" `
             --cache-control "public, max-age=31536000, immutable"
@@ -152,23 +173,16 @@ jobs:
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           $sha = "${{ steps.hash.outputs.sha256 }}"
-          $bucket = "${{ secrets.S3_BUCKET }}"
+          $bucket = "${{ env.S3_BUCKET }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
           $notes = "${{ github.event.inputs.notes_url }}"
 
-          # Public URL base:
-          # - If you use CloudFront/custom domain, set vars.CHECKMECHANIC_PUBLIC_BASE_URL
-          # - Otherwise you can use the S3 website/public URL you already expose
           $publicBase = "${{ env.PUBLIC_BASE_URL }}"
-
           if (-not $publicBase -or $publicBase.Trim().Length -eq 0) {
-            # Fallback (works if bucket objects are public and you use virtual-hosted-style)
-            # You may want to set CHECKMECHANIC_PUBLIC_BASE_URL to avoid region endpoint issues.
             $publicBase = "https://$bucket.s3.amazonaws.com/$prefix"
           }
 
           if (-not $notes -or $notes.Trim().Length -eq 0) {
-            # Default to GitHub Releases page
             $repo = "${{ github.repository }}"
             $notes = "https://github.com/$repo/releases/tag/v$version"
           }
@@ -193,7 +207,7 @@ jobs:
       - name: Upload latest.json (no cache)
         shell: pwsh
         run: |
-          $bucket = "${{ secrets.S3_BUCKET }}"
+          $bucket = "${{ env.S3_BUCKET }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
           $latestPath = "${{ steps.manifest.outputs.latest_path }}"
           $s3Key = "$prefix/latest.json"
@@ -205,10 +219,10 @@ jobs:
           Write-Host "Uploaded latest.json: s3://$bucket/$s3Key"
 
       - name: Invalidate CloudFront (latest.json only)
-        if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        if: ${{ env.CLOUDFRONT_DISTRIBUTION_ID != '' }}
         shell: pwsh
         run: |
-          $dist = "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}"
+          $dist = "${{ env.CLOUDFRONT_DISTRIBUTION_ID }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
           aws cloudfront create-invalidation --distribution-id $dist --paths "/$prefix/latest.json"
           Write-Host "Invalidated: /$prefix/latest.json"
