@@ -15,20 +15,24 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   build-and-upload:
     runs-on: windows-latest
 
     env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      S3_BUCKET: ${{ secrets.S3_BUCKET }}
       RELEASE_PREFIX: checkmechanic
 
-      # Public base URL (CloudFront/custom domain). Optional.
-      # Example: https://dxxxxxxxx.cloudfront.net/checkmechanic
-      PUBLIC_BASE_URL: ${{ vars.CHECKMECHANIC_PUBLIC_BASE_URL }}
+      # Required (GitHub Secrets)
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
 
-      # ✅ IMPORTANT: Put secret into env first, then use env in `if:`
+      # Optional (GitHub Vars/Secrets)
+      PUBLIC_BASE_URL: ${{ vars.CHECKMECHANIC_PUBLIC_BASE_URL }}
       CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
 
     steps:
@@ -106,21 +110,12 @@ jobs:
           "sha256=$h" >> $env:GITHUB_OUTPUT
           Write-Host "SHA256: $h"
 
-      - name: Install AWS CLI (if needed)
-        shell: pwsh
-        run: |
-          if (-not (Get-Command aws -ErrorAction SilentlyContinue)) {
-            Write-Host "AWS CLI not found, installing..."
-            choco install awscli -y
-          }
-          aws --version
-
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: checkmechanic-release
 
       - name: Upload Setup.exe and zip to S3
         shell: pwsh
@@ -128,7 +123,7 @@ jobs:
           $version = "${{ steps.ver.outputs.version }}"
           $setupPath = "${{ steps.extract.outputs.setup_path }}"
           $zipPath = "${{ steps.artifact.outputs.zip_path }}"
-          $bucket = "${{ secrets.S3_BUCKET }}"
+          $bucket = "${{ env.S3_BUCKET }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
 
           $s3SetupKey = "$prefix/releases/$version/Setup.exe"
@@ -152,13 +147,15 @@ jobs:
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           $sha = "${{ steps.hash.outputs.sha256 }}"
-          $bucket = "${{ secrets.S3_BUCKET }}"
+          $bucket = "${{ env.S3_BUCKET }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
           $notes = "${{ github.event.inputs.notes_url }}"
+          $region = "${{ env.AWS_REGION }}"
 
           $publicBase = "${{ env.PUBLIC_BASE_URL }}"
           if (-not $publicBase -or $publicBase.Trim().Length -eq 0) {
-            $publicBase = "https://$bucket.s3.amazonaws.com/$prefix"
+            # Region endpoint fallback (avoid redirect issues)
+            $publicBase = "https://$bucket.s3.$region.amazonaws.com/$prefix"
           }
 
           if (-not $notes -or $notes.Trim().Length -eq 0) {
@@ -186,7 +183,7 @@ jobs:
       - name: Upload latest.json (no cache)
         shell: pwsh
         run: |
-          $bucket = "${{ secrets.S3_BUCKET }}"
+          $bucket = "${{ env.S3_BUCKET }}"
           $prefix = "${{ env.RELEASE_PREFIX }}"
           $latestPath = "${{ steps.manifest.outputs.latest_path }}"
           $s3Key = "$prefix/latest.json"
@@ -210,5 +207,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CheckMechanic-Setup
-          path: |
-            ${{ steps.artifact.outputs.zip_path }}
+          path: ${{ steps.artifact.outputs.zip_path }}
