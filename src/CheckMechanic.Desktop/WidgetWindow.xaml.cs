@@ -21,6 +21,11 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
     private const int GwlExStyle = -20;
     private const int WsExTransparent = 0x20;
+    private const int WmHotKey = 0x0312;
+    private const int HotKeyIdToggleClickThrough = 0x434D31;
+    private const uint ModControl = 0x0002;
+    private const uint ModShift = 0x0004;
+    private const uint VkW = 0x57;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(1.5) };
@@ -34,6 +39,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
     private bool _isSwitchingToFullUi;
     private bool _isHovering;
     private bool _clickThroughEnabled;
+    private bool _hotKeyRegistered;
     private double _widgetOpacitySetting = 0.85;
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -428,6 +434,8 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
 
     private void WidgetWindow_OnClosing(object? sender, CancelEventArgs e)
     {
+        UnregisterGlobalHotKey();
+
         if (!_isSwitchingToFullUi)
         {
             var settings = UiSettingsStore.Load();
@@ -512,6 +520,7 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
 
     private void WidgetWindow_OnSourceInitialized(object? sender, EventArgs e)
     {
+        RegisterGlobalHotKey();
         ApplyClickThrough();
     }
 
@@ -551,6 +560,60 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
         {
             SetWindowLong(handle, GwlExStyle, nextStyle);
         }
+    }
+
+    private void RegisterGlobalHotKey()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || _hotKeyRegistered)
+        {
+            return;
+        }
+
+        if (RegisterHotKey(handle, HotKeyIdToggleClickThrough, ModControl | ModShift, VkW))
+        {
+            _hotKeyRegistered = true;
+            var source = HwndSource.FromHwnd(handle);
+            source?.AddHook(WndProc);
+        }
+    }
+
+    private void UnregisterGlobalHotKey()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !_hotKeyRegistered)
+        {
+            return;
+        }
+
+        try
+        {
+            var source = HwndSource.FromHwnd(handle);
+            source?.RemoveHook(WndProc);
+            UnregisterHotKey(handle, HotKeyIdToggleClickThrough);
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _hotKeyRegistered = false;
+        }
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WmHotKey && wParam.ToInt32() == HotKeyIdToggleClickThrough)
+        {
+            _clickThroughEnabled = !_clickThroughEnabled;
+            ClickThroughMenuItem.IsChecked = _clickThroughEnabled;
+            ApplyClickThrough();
+            SaveWidgetSettings();
+            NotifyAll();
+            handled = true;
+        }
+
+        return IntPtr.Zero;
     }
 
     private void UpdateSparklinePaths()
@@ -612,4 +675,10 @@ public partial class WidgetWindow : Window, INotifyPropertyChanged
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }
