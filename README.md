@@ -123,6 +123,19 @@ pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -Pu
 ```
 - バッジクリックで Setup.exe を `%LocalAppData%\\CheckMechanic\\updates\\<version>\\Setup.exe` に保存し、SHA256検証後に Burn を `/passive /norestart /log` で起動
 
+#### 配布時の `latest.json` 生成例
+1. `scripts/build_installer_zip.ps1` で `dist/installer/Setup.exe` を生成
+2. `scripts/new_update_manifest.ps1` で `sha256` 付き `latest.json` を生成
+3. `Setup.exe` と `latest.json` を公開URLへ配置
+
+```powershell
+pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.2 -PublishSingleFile $true
+pwsh ./scripts/new_update_manifest.ps1 `
+  -Version 1.0.2 `
+  -DownloadUrl "https://downloads.example.com/checkmechanic/1.0.2/Setup.exe" `
+  -ReleaseNotesUrl "https://downloads.example.com/checkmechanic/1.0.2/notes.html"
+```
+
 ### API quick check
 ```powershell
 irm http://127.0.0.1:17805/health
