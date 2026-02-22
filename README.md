@@ -136,6 +136,15 @@ pwsh ./scripts/new_update_manifest.ps1 `
   -ReleaseNotesUrl "https://downloads.example.com/checkmechanic/1.0.2/notes.html"
 ```
 
+#### WSLから一括リリース（build + manifest + upload + invalidation）
+```bash
+./scripts/release.sh \
+  --version 1.0.2 \
+  --bucket checkmechanic-release-bucket \
+  --distribution-id E1JOK9M9AG4WIM \
+  --domain checkmechanic.apiron.jp
+```
+
 ### API quick check
 ```powershell
 irm http://127.0.0.1:17805/health
