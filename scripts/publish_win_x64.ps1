@@ -1,5 +1,6 @@
 param(
     [string]$Configuration = "Release",
+    [string]$Version = "1.0.0",
     [string]$Runtime = "win-x64",
     [bool]$SelfContained = $true,
     [bool]$PublishSingleFile = $true,
@@ -27,6 +28,8 @@ dotnet publish $desktopProjectPath `
     -c $Configuration `
     -r $Runtime `
     --self-contained $sc `
+    -p:Version=$Version `
+    -p:InformationalVersion=$Version `
     -p:PublishSingleFile=$psf `
     -p:PublishTrimmed=false `
     -o $outPath
@@ -37,6 +40,8 @@ dotnet publish $helperProjectPath `
     -c $Configuration `
     -r $Runtime `
     --self-contained $sc `
+    -p:Version=$Version `
+    -p:InformationalVersion=$Version `
     -p:PublishSingleFile=$psf `
     -p:PublishTrimmed=false `
     -o $outPath

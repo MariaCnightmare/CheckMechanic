@@ -5,6 +5,8 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Version Condition="'$(Version)'==''">0.1.0</Version>
+    <InformationalVersion Condition="'$(InformationalVersion)'==''">$(Version)</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\CheckMechanic.Shared\CheckMechanic.Shared.csproj" />

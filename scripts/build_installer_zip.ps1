@@ -79,6 +79,7 @@ New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
 
 & (Join-Path $PSScriptRoot "publish_win_x64.ps1") `
     -Configuration $Configuration `
+    -Version $Version `
     -Runtime $Runtime `
     -SelfContained:$SelfContained `
     -PublishSingleFile:$PublishSingleFile `

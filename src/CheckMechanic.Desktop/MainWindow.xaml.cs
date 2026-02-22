@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Reflection; // UPDATED
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -1456,6 +1457,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             var currentVersion = GetCurrentAppVersionString();
+            AddLog($"update compare: currentVersion={currentVersion} latestVersion={manifest.Version}"); // UPDATED
             if (IsNewerVersion(manifest.Version, currentVersion))
             {
                 _availableUpdateVersion = manifest.Version;
@@ -1464,7 +1466,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _availableUpdateSha256 = manifest.Sha256;
                 UpdateBadgeTooltip = $"新しいバージョン: {manifest.Version}";
                 UpdateBadgeVisibility = Visibility.Visible;
-                AddLog($"update available: {manifest.Version} (current {currentVersion})");
+                AddLog($"update decision: update available (latest={manifest.Version}, current={currentVersion})"); // UPDATED
             }
             else
             {
@@ -1474,6 +1476,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _availableUpdateSha256 = null;
                 UpdateBadgeTooltip = string.Empty;
                 UpdateBadgeVisibility = Visibility.Collapsed;
+                AddLog($"update decision: up to date (latest={manifest.Version}, current={currentVersion})"); // UPDATED
             }
 
             RefreshBindings(force: true);
@@ -1639,60 +1642,107 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static string GetCurrentAppVersionString()
     {
-        var version = typeof(MainWindow).Assembly.GetName().Version;
-        if (version is null)
+        try
         {
-            return "0.0.0";
+            var assembly = typeof(MainWindow).Assembly;
+
+            // UPDATED: Prefer AssemblyInformationalVersion (SemVer string)
+            var informational = assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion;
+            if (TryParseSemVerCore(informational, out var iMajor, out var iMinor, out var iPatch))
+            {
+                return $"{iMajor}.{iMinor}.{iPatch}";
+            }
+
+            // UPDATED: Fallback to AssemblyVersion
+            var version = assembly.GetName().Version;
+            if (version is not null)
+            {
+                var build = version.Build < 0 ? 0 : version.Build;
+                return $"{version.Major}.{version.Minor}.{build}";
+            }
+        }
+        catch
+        {
         }
 
-        var build = version.Build < 0 ? 0 : version.Build;
-        return $"{version.Major}.{version.Minor}.{build}";
+        // UPDATED: Fail-safe fallback for CI/local builds
+        return "0.0.0";
     }
 
     private static bool IsNewerVersion(string candidate, string current)
     {
-        var c1 = ParseVersionParts(candidate);
-        var c2 = ParseVersionParts(current);
-        var len = Math.Max(c1.Count, c2.Count);
-        for (var i = 0; i < len; i++)
+        // UPDATED: Strict numeric SemVer core comparison (major.minor.patch), no string compare.
+        if (!TryParseSemVerCore(candidate, out var cMajor, out var cMinor, out var cPatch))
         {
-            var v1 = i < c1.Count ? c1[i] : 0;
-            var v2 = i < c2.Count ? c2[i] : 0;
-            if (v1 > v2)
-            {
-                return true;
-            }
-            if (v1 < v2)
+            return false;
+        }
+
+        if (!TryParseSemVerCore(current, out var curMajor, out var curMinor, out var curPatch))
+        {
+            curMajor = 0;
+            curMinor = 0;
+            curPatch = 0;
+        }
+
+        if (cMajor != curMajor) return cMajor > curMajor;
+        if (cMinor != curMinor) return cMinor > curMinor;
+        return cPatch > curPatch;
+    }
+
+    private static bool TryParseSemVerCore(string? value, out int major, out int minor, out int patch) // UPDATED
+    {
+        major = 0;
+        minor = 0;
+        patch = 0;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var core = value.Trim();
+        var plusIdx = core.IndexOf('+');
+        if (plusIdx >= 0)
+        {
+            core = core[..plusIdx];
+        }
+
+        var dashIdx = core.IndexOf('-');
+        if (dashIdx >= 0)
+        {
+            core = core[..dashIdx];
+        }
+
+        var parts = core.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(parts[0], out major))
+        {
+            return false;
+        }
+
+        if (!int.TryParse(parts[1], out minor))
+        {
+            return false;
+        }
+
+        if (parts.Length >= 3)
+        {
+            if (!int.TryParse(parts[2], out patch))
             {
                 return false;
             }
         }
-
-        return false;
-    }
-
-    private static List<int> ParseVersionParts(string value)
-    {
-        var result = new List<int>();
-        foreach (var segment in value.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        else
         {
-            var digits = new string(segment.TakeWhile(char.IsDigit).ToArray());
-            if (int.TryParse(digits, out var number))
-            {
-                result.Add(number);
-            }
-            else
-            {
-                result.Add(0);
-            }
+            patch = 0;
         }
 
-        if (result.Count == 0)
-        {
-            result.Add(0);
-        }
-
-        return result;
+        return major >= 0 && minor >= 0 && patch >= 0;
     }
 
     private static string NormalizeSha256(string value) => value.Replace(" ", string.Empty).Trim();
