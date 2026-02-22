@@ -20,7 +20,7 @@ namespace CheckMechanic.Desktop;
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private const string HelperBaseUrl = "http://127.0.0.1:17805";
-    private const string UpdateManifestUrl = "https://updates.example.com/checkmechanic/latest.json";
+    private const string UpdateManifestUrl = "https://checkmechanic.apiron.jp/latest.json";
     private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(24);
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
