@@ -61,16 +61,29 @@ if [[ -z "$REPO_WIN_PATH" ]]; then
   REPO_WIN_PATH="$(wslpath -w "$REPO_ROOT")"
 fi
 
+if [[ "$REPO_WIN_PATH" == \\\\wsl.localhost\\* ]]; then
+  echo "repo-win-path resolves to a WSL UNC path: $REPO_WIN_PATH" >&2
+  echo "Use a drive-letter Windows path with --repo-win-path (e.g. C:\\Users\\ATake\\workspace\\CheckMechanic\\CheckMechanic)." >&2
+  exit 1
+fi
+
+REPO_WSL_PATH_FROM_WIN="$(wslpath -u "$REPO_WIN_PATH" 2>/dev/null || true)"
+ARTIFACT_ROOT="$REPO_ROOT"
+if [[ -n "$REPO_WSL_PATH_FROM_WIN" && -d "$REPO_WSL_PATH_FROM_WIN" ]]; then
+  ARTIFACT_ROOT="$REPO_WSL_PATH_FROM_WIN"
+fi
+
 if [[ -z "$NOTES_URL" ]]; then
   NOTES_URL="https://${DOMAIN}/checkmechanic/${VERSION}/notes.html"
 fi
 
 DOWNLOAD_URL="https://${DOMAIN}/checkmechanic/${VERSION}/Setup.exe"
-SETUP_PATH="$REPO_ROOT/dist/installer/Setup.exe"
-MANIFEST_PATH="$REPO_ROOT/dist/latest.json"
+SETUP_PATH="$ARTIFACT_ROOT/dist/installer/Setup.exe"
+MANIFEST_PATH="$ARTIFACT_ROOT/dist/latest.json"
 
 echo "[release] repo          : $REPO_ROOT"
 echo "[release] repo(win)     : $REPO_WIN_PATH"
+echo "[release] artifacts     : $ARTIFACT_ROOT"
 echo "[release] version       : $VERSION"
 echo "[release] download_url  : $DOWNLOAD_URL"
 echo "[release] notes_url     : $NOTES_URL"
