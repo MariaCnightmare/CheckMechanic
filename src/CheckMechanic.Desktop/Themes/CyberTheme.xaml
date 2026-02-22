@@ -158,9 +158,9 @@
     </Style>
 
     <Style x:Key="UpdateBadgeButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
-        <Setter Property="Background" Value="#2A6A4A2A" />
-        <Setter Property="Foreground" Value="#FFF2E6" />
-        <Setter Property="BorderBrush" Value="#D88A3A" />
+        <Setter Property="Background" Value="#1A1E2A24" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="#5C7F7467" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="12" />
@@ -172,18 +172,18 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="999">
+                            CornerRadius="6">
                         <ContentPresenter HorizontalAlignment="Center"
                                           VerticalAlignment="Center"
                                           Margin="2,0" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="BadgeChrome" Property="BorderBrush" Value="#E2A35E" />
+                            <Setter TargetName="BadgeChrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                             <Setter TargetName="BadgeChrome" Property="Effect" Value="{StaticResource ButtonHoverGlowEffect}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="BadgeChrome" Property="Background" Value="#3A6A4A2A" />
+                            <Setter TargetName="BadgeChrome" Property="Background" Value="#262A3B34" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="BadgeChrome" Property="Opacity" Value="0.65" />

@@ -189,8 +189,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public Visibility RestrictionVisibility { get; set; } = Visibility.Visible;
     public string DiagnosticsSummaryText { get; set; } = "errors:0 / provider:-";
     public string LocalRankingText { get; set; } = "ローカル履歴: N/A";
-    public Visibility UpdateBadgeVisibility { get; set; } = Visibility.Collapsed;
-    public string UpdateBadgeText { get; set; } = "更新";
+    public Visibility UpdateBadgeVisibility { get; set; } = Visibility.Visible;
+    public string UpdateBadgeText { get; set; } = "更新を確認";
     public string UpdateBadgeTooltip { get; set; } = string.Empty;
     public string AppVersionText { get; set; } = "Version --";
 
@@ -1413,8 +1413,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void UpdateBadgeButton_OnClick(object sender, RoutedEventArgs e)
     {
         await RunUpdateCheckAsync(force: true);
-        if (UpdateBadgeVisibility != Visibility.Visible ||
-            string.IsNullOrWhiteSpace(_availableUpdateVersion) ||
+        if (string.IsNullOrWhiteSpace(_availableUpdateVersion) ||
             string.IsNullOrWhiteSpace(_availableUpdateDownloadUrl) ||
             string.IsNullOrWhiteSpace(_availableUpdateSha256))
         {
@@ -1478,9 +1477,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _availableUpdateDownloadUrl = null;
                 _availableUpdateReleaseNotesUrl = null;
                 _availableUpdateSha256 = null;
-                UpdateBadgeText = "更新";
+                UpdateBadgeText = "更新を確認";
                 UpdateBadgeTooltip = string.Empty;
-                UpdateBadgeVisibility = Visibility.Collapsed;
+                UpdateBadgeVisibility = Visibility.Visible;
                 AddLog($"update decision: up to date (latest={manifest.Version}, current={currentVersion})"); // UPDATED
             }
 
