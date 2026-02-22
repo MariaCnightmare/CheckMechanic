@@ -38,7 +38,7 @@ REPO_WIN_PATH=""
 PUBLIC_PREFIX="releases"
 S3_ARTIFACT_PREFIX="checkmechanic/releases"
 S3_MANIFEST_KEY="checkmechanic/latest.json"
-AWS_PROFILE=""
+AWS_PROFILE_OPT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -51,7 +51,7 @@ while [[ $# -gt 0 ]]; do
     --public-prefix) PUBLIC_PREFIX="${2:-}"; shift 2 ;;
     --s3-artifact-prefix) S3_ARTIFACT_PREFIX="${2:-}"; shift 2 ;;
     --s3-manifest-key) S3_MANIFEST_KEY="${2:-}"; shift 2 ;;
-    --aws-profile) AWS_PROFILE="${2:-}"; shift 2 ;;
+    --aws-profile) AWS_PROFILE_OPT="${2:-}"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
     --skip-upload) SKIP_UPLOAD=1; shift ;;
     --skip-invalidation) SKIP_INVALIDATION=1; shift ;;
@@ -102,7 +102,9 @@ S3_SETUP_KEY="${S3_ARTIFACT_PREFIX}/${VERSION}/Setup.exe"
 INVALIDATE_SETUP_PATH="/${PUBLIC_PREFIX}/${VERSION}/Setup.exe"
 
 AWS_ARGS=()
-if [[ -n "$AWS_PROFILE" ]]; then
+if [[ -n "$AWS_PROFILE_OPT" ]]; then
+  AWS_ARGS=(--profile "$AWS_PROFILE_OPT")
+elif [[ -n "${AWS_PROFILE:-}" ]]; then
   AWS_ARGS=(--profile "$AWS_PROFILE")
 fi
 
@@ -117,8 +119,8 @@ echo "[release] s3_setup_key  : $S3_SETUP_KEY"
 echo "[release] s3_manifest   : $S3_MANIFEST_KEY"
 echo "[release] bucket        : s3://$BUCKET"
 echo "[release] distribution  : $DISTRIBUTION_ID"
-if [[ -n "$AWS_PROFILE" ]]; then
-  echo "[release] aws_profile   : $AWS_PROFILE"
+if [[ ${#AWS_ARGS[@]} -gt 0 ]]; then
+  echo "[release] aws_profile   : ${AWS_ARGS[1]}"
 fi
 
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
