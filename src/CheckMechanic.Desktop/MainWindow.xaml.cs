@@ -190,7 +190,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string DiagnosticsSummaryText { get; set; } = "errors:0 / provider:-";
     public string LocalRankingText { get; set; } = "ローカル履歴: N/A";
     public Visibility UpdateBadgeVisibility { get; set; } = Visibility.Collapsed;
+    public string UpdateBadgeText { get; set; } = "更新";
     public string UpdateBadgeTooltip { get; set; } = string.Empty;
+    public string AppVersionText { get; set; } = "Version --";
 
     public string ProfileOsMajor { get; set; } = "-";
     public string ProfileOsBuildBucket { get; set; } = "-";
@@ -251,6 +253,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent();
         DataContext = this;
+        AppVersionText = $"Version {GetCurrentAppVersionString()}";
         InitializeRadarGrid();
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
@@ -1464,6 +1467,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _availableUpdateDownloadUrl = manifest.DownloadUrl;
                 _availableUpdateReleaseNotesUrl = manifest.ReleaseNotesUrl;
                 _availableUpdateSha256 = manifest.Sha256;
+                UpdateBadgeText = $"更新 v{manifest.Version}";
                 UpdateBadgeTooltip = $"新しいバージョン: {manifest.Version}";
                 UpdateBadgeVisibility = Visibility.Visible;
                 AddLog($"update decision: update available (latest={manifest.Version}, current={currentVersion})"); // UPDATED
@@ -1474,6 +1478,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _availableUpdateDownloadUrl = null;
                 _availableUpdateReleaseNotesUrl = null;
                 _availableUpdateSha256 = null;
+                UpdateBadgeText = "更新";
                 UpdateBadgeTooltip = string.Empty;
                 UpdateBadgeVisibility = Visibility.Collapsed;
                 AddLog($"update decision: up to date (latest={manifest.Version}, current={currentVersion})"); // UPDATED
@@ -2123,7 +2128,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         hc.Add(RankingProfileText);
         hc.Add(LocalRankingText);
         hc.Add((int)UpdateBadgeVisibility);
+        hc.Add(UpdateBadgeText);
         hc.Add(UpdateBadgeTooltip);
+        hc.Add(AppVersionText);
 
         // NOTE: LastUpdateText intentionally excluded to allow suppression
         return hc.ToHashCode();

@@ -47,6 +47,7 @@
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="CheckMechanic" FontSize="30" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
                         <TextBlock Text="Local Telemetry Dashboard" Style="{DynamicResource MetricSubStyle}" Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding AppVersionText}" Style="{DynamicResource MetricSubStyle}" Margin="0,2,0,0" />
                     </StackPanel>
 
                     <Border Grid.Column="1"
@@ -97,7 +98,7 @@
                                   ToolTip="アプリ終了時に Core Temp を自動終了します（手動起動分も対象）" />
 
                         <Button Grid.Column="3"
-                                Content="UPDATE"
+                                Content="{Binding UpdateBadgeText}"
                                 Style="{DynamicResource UpdateBadgeButtonStyle}"
                                 Height="34"
                                 Margin="0,0,8,0"

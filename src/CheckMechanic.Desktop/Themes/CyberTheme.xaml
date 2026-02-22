@@ -157,14 +157,14 @@
         <Setter Property="Padding" Value="8,4" />
     </Style>
 
-    <Style x:Key="UpdateBadgeButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-        <Setter Property="Background" Value="#2A49FF86" />
-        <Setter Property="Foreground" Value="#E8FFF4" />
-        <Setter Property="BorderBrush" Value="#6B49FF86" />
+    <Style x:Key="UpdateBadgeButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+        <Setter Property="Background" Value="#2A6A4A2A" />
+        <Setter Property="Foreground" Value="#FFF2E6" />
+        <Setter Property="BorderBrush" Value="#D88A3A" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Padding" Value="12,4" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -179,11 +179,11 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="BadgeChrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="BadgeChrome" Property="BorderBrush" Value="#E2A35E" />
                             <Setter TargetName="BadgeChrome" Property="Effect" Value="{StaticResource ButtonHoverGlowEffect}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="BadgeChrome" Property="Background" Value="#3D49FF86" />
+                            <Setter TargetName="BadgeChrome" Property="Background" Value="#3A6A4A2A" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="BadgeChrome" Property="Opacity" Value="0.65" />
