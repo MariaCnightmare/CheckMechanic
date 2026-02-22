@@ -3,6 +3,62 @@
 PCのベンチマーク/システム情報/温度などを分かりやすく可視化し、ユーザー同意（オプトイン）のもと
 匿名化・カテゴリ化した集計データをランキング/比較指標として活用するためのプロジェクトです。
 
+## ユーザー向けガイド（Windows）
+
+### できること
+- CPU温度/使用率、GPU、メモリ、ディスク、ネットワーク、バッテリーの可視化
+- PerfScore（CPU/Mem/Disk/Net/Thermal/GPU）の表示
+- 1画面ダッシュボード表示とウィジェット表示（Topmost）
+- 診断情報の確認/エクスポート
+- アプリ内の「更新を確認」から最新版チェックと更新
+
+### 動作条件
+- Windows 10/11 x64
+- CPU温度取得のため `Core Temp` が必要（本アプリの温度必須モード）
+- 一部PCでは管理者権限が必要
+
+### インストール
+1. 最新版マニフェストを開く: `https://checkmechanic.apiron.jp/latest.json`
+2. `download_url` の `Setup.exe` を実行してインストール
+3. アプリを起動
+
+直接ダウンロードURL（versioned）:
+- `https://checkmechanic.apiron.jp/releases/<version>/Setup.exe`
+
+PowerShell例:
+```powershell
+Start-Process "https://checkmechanic.apiron.jp/releases/1.0.6/Setup.exe"
+```
+
+### 初回セットアップ（温度が取れない場合）
+1. Core Temp を起動
+2. `Options -> Settings -> Advanced -> Enable Global Shared Memory (SNMP)` を ON
+3. CheckMechanic の「再チェック」を実行
+4. 必要なら「管理者で再試行」を実行
+
+### 使い方（基本）
+- `再チェック`: センサー再取得
+- `更新を確認`: 最新版の手動チェック
+- `…` メニュー:
+  - 管理者で再試行
+  - SensorHelper再起動
+  - 再接続
+  - ウィジェットモードへ
+  - 診断エクスポート
+
+### 更新方法
+1. ヘッダーの `更新を確認` をクリック
+2. 更新が見つかったら `更新 vX.Y.Z` ボタンから実行
+3. ダウンロード後にインストーラが起動
+
+### よくある問題
+- `必須要件未達: 温度取得が必要です`:
+  - Core Temp 起動/設定(SNMP ON)を確認
+  - 管理者で再試行
+- 更新が表示されない:
+  - `https://checkmechanic.apiron.jp/latest.json` の `version` を確認
+  - インストール済みバージョンと同じ場合は更新なし
+
 ## MVP（最初にやること）
 - ローカルで「見やすい可視化」が動く（PoC）
 - 収集データの範囲が明確（収集しない情報も明記）
@@ -112,6 +168,8 @@ pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -Pu
 ### 更新チェック（Desktop）
 - Desktop 起動時に `latest.json` を非同期取得し、新版があればヘッダ右上に `UPDATE` バッジを表示
 - `latest.json` は固定URL（`MainWindow.xaml.cs` の `UpdateManifestUrl` 定数）から取得
+- ダウンロード実URL（versioned）: `https://checkmechanic.apiron.jp/releases/<version>/Setup.exe`
+- 最新マニフェストURL: `https://checkmechanic.apiron.jp/latest.json`
 - 想定スキーマ:
 ```json
 {
@@ -122,6 +180,11 @@ pwsh ./scripts/build_installer_zip.ps1 -Configuration Release -Version 1.0.0 -Pu
 }
 ```
 - バッジクリックで Setup.exe を `%LocalAppData%\\CheckMechanic\\updates\\<version>\\Setup.exe` に保存し、SHA256検証後に Burn を `/passive /norestart /log` で起動
+
+#### 直接ダウンロード実行
+```powershell
+Start-Process "https://checkmechanic.apiron.jp/releases/1.0.6/Setup.exe"
+```
 
 #### 配布時の `latest.json` 生成例
 1. `scripts/build_installer_zip.ps1` で `dist/installer/Setup.exe` を生成
