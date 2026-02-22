@@ -142,7 +142,8 @@ pwsh ./scripts/new_update_manifest.ps1 `
   --version 1.0.2 \
   --bucket checkmechanic-release-bucket \
   --distribution-id E1JOK9M9AG4WIM \
-  --domain checkmechanic.apiron.jp
+  --domain checkmechanic.apiron.jp \
+  --aws-profile apiron.dev
 ```
 
 ### API quick check
